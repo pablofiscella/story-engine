@@ -162,3 +162,43 @@ def test_el_texto_va_a_un_ARCHIVO_y_no_al_filtro(tmp_path) -> None:
     assert f"textfile={destino}" in filtro
     assert ":text=" not in filtro
     assert destino.read_text(encoding="utf-8").replace("\n", " ") == "Dino: el que no compartía"
+
+
+# --- cómo se ve y CUÁNDO aparece -------------------------------------------------
+
+
+@sin_ffmpeg
+def test_el_texto_lleva_contorno_y_no_caja(tmp_path) -> None:
+    """La caja negra tapaba la ilustración, que es lo que hay que mirar. Con un
+    contorno grueso el texto se lee igual sobre las zonas claras y las oscuras."""
+    filtro = ShortRenderer()._texto("Dino", tmp_path / "t.txt", y="0", tope=88)
+
+    assert "borderw=" in filtro and "bordercolor=" in filtro
+    assert "box=1" not in filtro and "boxcolor" not in filtro
+
+
+@sin_ffmpeg
+async def test_la_pregunta_aparece_cuando_se_dice_no_antes(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """El cierre narra primero la moraleja y después la pregunta. Si el texto está
+    desde el arranque del tramo, decora; si entra con lo que se escucha, se lee."""
+    from engine.render.video import ADELANTO_DEL_CIERRE_S
+
+    story = await _lista(tmp_path, tema_dinos, estilo_3d, dino, tuca)
+    moraleja = story.closing_audio[0].duration_s
+
+    filtro = ShortRenderer()._texto(
+        story.closing_question, tmp_path / "c.txt", y="h*0.80", tope=64,
+        desde=moraleja - ADELANTO_DEL_CIERRE_S,
+    )
+    assert f"enable='gte(t,{moraleja - ADELANTO_DEL_CIERRE_S:.3f})'" in filtro
+    assert moraleja - ADELANTO_DEL_CIERRE_S > 0  # hay moraleja antes de la pregunta
+
+
+@sin_ffmpeg
+def test_sin_hora_de_entrada_el_texto_esta_desde_el_principio(tmp_path) -> None:
+    """El título tiene que verse apenas arranca: son los segundos que deciden si se
+    quedan."""
+    filtro = ShortRenderer()._texto("Dino", tmp_path / "t.txt", y="0", tope=88)
+    assert "enable=" not in filtro

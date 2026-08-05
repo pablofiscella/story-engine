@@ -68,6 +68,19 @@ FUENTE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 FPS = 30
 
+#: Grosor del contorno del texto, en píxeles.
+#:
+#: Reemplaza a la caja negra que había antes: la caja tapaba la ilustración, que es
+#: justamente lo que hay que mirar. Un contorno grueso se lee igual sobre las zonas
+#: claras y sobre las oscuras de un dibujo infantil.
+CONTORNO = 8
+
+#: Cuánto antes de que la voz lo diga aparece el texto del cierre.
+#:
+#: No desde el principio del tramo: la pregunta tiene que entrar junto con lo que se
+#: escucha. Si está desde el arranque, decora; si aparece cuando se dice, se lee.
+ADELANTO_DEL_CIERRE_S = 1.0
+
 
 #: Cuántos caracteres entran cómodos en una línea de un cuadro vertical.
 LARGO_DE_LINEA = 20
@@ -129,11 +142,15 @@ class ShortRenderer:
         cierre_s = sum(t.duration_s for t in story.closing_audio) + COLA_FINAL_S
         idx_cierre = len(story.scenes) + 1
         entradas += ["-loop", "1", "-t", f"{cierre_s:.3f}", "-i", story.scenes[-1].image_path]
+        # La moraleja se dice primero y la pregunta después: el texto entra un
+        # segundo antes de que empiece la pregunta hablada.
+        antes_de_la_pregunta = sum(t.duration_s for t in story.closing_audio[:-1])
         pregunta = self._texto(
             story.closing_question,
             salida.parent / "_cierre.txt",
-            y="h*0.70",
+            y="h*0.80",
             tope=64,
+            desde=max(0.0, antes_de_la_pregunta - ADELANTO_DEL_CIERRE_S),
         )
         filtros.append(f"[{idx_cierre}:v]{self._encuadrar()},{pregunta}[cierre]")
         tramos.append("[cierre]")
@@ -191,7 +208,9 @@ class ShortRenderer:
             f"crop={self._ancho}:{self._alto},setsar=1,fps={self._fps}"
         )
 
-    def _texto(self, texto: str, archivo: Path, *, y: str, tope: int) -> str:
+    def _texto(
+        self, texto: str, archivo: Path, *, y: str, tope: int, desde: float | None = None
+    ) -> str:
         """Un texto legible sobre cualquier imagen, que ENTRA en el cuadro.
 
         Dos cosas que parecen detalle y no lo son:
@@ -199,8 +218,13 @@ class ShortRenderer:
         - **Se parte en líneas y el tamaño se calcula.** Con un tamaño fijo, un
           título de 27 caracteres se sale del cuadro por los dos lados: el primer
           short decía "no y la pelota de color".
-        - **Lleva caja de fondo, no sólo borde.** Una imagen infantil tiene zonas
-          claras y oscuras y el texto sin fondo desaparece en alguna de las dos.
+        - **Contorno y no caja.** La caja negra tapa la ilustración, que es lo que
+          hay que mirar. Con un contorno grueso el texto se lee igual sobre las
+          zonas claras y sobre las oscuras, y la imagen se sigue viendo entera.
+
+        `desde` retrasa la aparición: el texto del cierre entra un segundo antes de
+        que la voz lo diga, no desde el principio del tramo. Que aparezca junto con
+        lo que se escucha es lo que hace que se lea en vez de decorar.
         """
         lineas = _envolver(texto)
         # DejaVu Sans Bold ocupa ~0.58 del tamaño por carácter. Se deja margen a cada
@@ -213,11 +237,12 @@ class ShortRenderer:
         # dentro de un filtro de ffmpeg. Con el texto en un archivo no hay nada que
         # escapar. El primer intento con `text=` salió "ino y la pelota dencolore".
         archivo.write_text("\n".join(lineas), encoding="utf-8")
+        aparicion = f":enable='gte(t,{desde:.3f})'" if desde is not None else ""
         return (
             f"drawtext=fontfile={FUENTE}:textfile={archivo}:"
             f"fontcolor=white:fontsize={tam}:line_spacing=14:"
-            f"box=1:boxcolor=black@0.5:boxborderw=22:"
-            f"x=(w-text_w)/2:y={y}"
+            f"borderw={CONTORNO}:bordercolor=black@0.85:"
+            f"x=(w-text_w)/2:y={y}{aparicion}"
         )
 
     def _verificar(self, story: Story) -> None:
