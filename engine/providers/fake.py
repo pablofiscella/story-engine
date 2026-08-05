@@ -115,6 +115,10 @@ class FakeImageProvider:
         return self.PNG + str(len(self.llamadas)).encode()
 
 
+#: Igual que en el proveedor real: lo que va entre corchetes se actúa, no se lee.
+_ETIQUETA = re.compile(r"\[[^\]]{1,300}\]")
+
+
 class FakeVoiceProvider:
     """Devuelve un WAV real, con la duración que le correspondería a ese texto.
 
@@ -140,7 +144,11 @@ class FakeVoiceProvider:
         audio_format: str = "wav",
     ) -> bytes:
         self.llamadas.append({"text": text, "voice_id": voice_id, "speed": speed})
-        segundos = max(0.1, len(text.split()) / (self.palabras_por_s * speed))
+        # Las etiquetas de entonación no se DICEN: son instrucciones de actuación.
+        # Contarlas como palabras haría que el fake mintiera sobre la duración, que es
+        # justo lo que este provider existe para simular bien.
+        dicho = _ETIQUETA.sub("", text)
+        segundos = max(0.1, len(dicho.split()) / (self.palabras_por_s * speed))
         return _wav_silencioso(segundos)
 
 

@@ -41,6 +41,7 @@ from engine.core.models.character import Voice
 from engine.core.models.scene import Scene
 from engine.core.models.story import Story
 from engine.core.retry import con_reintentos
+from engine.prompts import voz as prompts_voz
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,9 @@ class StoryNarrator:
                 kind=AudioKind.NARRATION,
                 character_id=None,
                 ruta=destino / f"escena_{escena.index:02d}_narracion.wav",
+                entonacion=prompts_voz.direccion_de_escena(
+                    escena.beat, escena.emotion, es_primera=escena.index == 0
+                ),
             )
         )
 
@@ -130,6 +134,11 @@ class StoryNarrator:
                     kind=AudioKind.DIALOGUE,
                     character_id=personaje.id,
                     ruta=destino / f"escena_{escena.index:02d}_dialogo_{n}.wav",
+                    entonacion=prompts_voz.direccion_de_escena(
+                        escena.beat,
+                        linea.emotion or escena.emotion_for(personaje.id),
+                        es_primera=False,
+                    ),
                 )
             )
         return pistas
@@ -142,11 +151,16 @@ class StoryNarrator:
         kind: AudioKind,
         character_id: str | None,
         ruta: Path,
+        entonacion: str = "",
     ) -> AudioTrack:
         decible = para_decir(texto)
+        # La etiqueta va DESPUÉS de limpiar y no cuenta como texto: es una instrucción
+        # de actuación, no algo que se diga. Si el modelo no la entiende, el proveedor
+        # la saca — acá no hay que acordarse.
+        pedido = prompts_voz.con_entonacion(decible, entonacion)
         audio = await con_reintentos(
             lambda: self._provider.synthesize(
-                decible,
+                pedido,
                 voice_id=voz.provider_voice_id,
                 speed=voz.speed,
                 audio_format="wav",
@@ -192,21 +206,26 @@ class StoryNarrator:
 #: Lo que hay que arreglar del texto ANTES de mandarlo a decir.
 #:
 #: El texto que se DICE no es el que se VE. Las comillas angulares las lee como
-#: ">>" —pasó en los audiolibros— y los guiones de diálogo quedan como un silencio
-#: raro en el medio de la frase. El subtítulo, que es otro campo, conserva la
-#: puntuación bonita.
+#: ">>" —pasó en los audiolibros— y los asteriscos de markdown no son nada.
+#:
+#: **Lo que NO se toca: los puntos suspensivos.** Son la herramienta principal para
+#: el ritmo de un cuento: el modelo baja la velocidad y toma aire donde hay "...".
+#: Convertirlos en punto —que es lo que hacía este código— aplana justamente lo que
+#: hay que exagerar. Igual los signos de exclamación y de pregunta, que son los que
+#: levantan el tono.
 _PARA_DECIR: tuple[tuple[str, str], ...] = (
     ("«", ""),
     ("»", ""),
-    ("—", ", "),
-    ("–", ", "),
-    ("…", "."),
     ("*", ""),
 )
 
 
 def para_decir(texto: str) -> str:
-    """El texto listo para el TTS: sin los signos que se leen mal en voz alta."""
+    """El texto listo para el TTS: sin los signos que se leen mal en voz alta.
+
+    Deliberadamente conservador: casi todo signo que un cuentacuentos usaría está
+    ahí para marcar el ritmo, y limpiarlo de más deja la lectura plana.
+    """
     limpio = texto
     for viejo, nuevo in _PARA_DECIR:
         limpio = limpio.replace(viejo, nuevo)

@@ -52,7 +52,15 @@ _ETIQUETAS_SOPORTADAS: dict[str, bool] = {
 #: una escena que "se aceleró un 10%" y en realidad no, desincroniza el video.
 _ACEPTAN_SPEED = frozenset({"eleven_multilingual_v2", "eleven_turbo_v2_5"})
 
-_ETIQUETA = re.compile(r"\[[^\]]{1,30}\]")
+#: `style` amplifica la expresividad y sólo existe en v2. Es la perilla que la receta
+#: de cuento infantil manda subir (0.15–0.5) para el tono exagerado que se usa al
+#: leerle a un chico.
+_ACEPTAN_STYLE = frozenset({"eleven_multilingual_v2"})
+
+#: Cualquier bloque entre corchetes es dirección de actuación, no texto a decir.
+#: El tope es generoso porque la dirección de escena es una frase entera, no una
+#: palabra: con un límite corto se colaba al audio y el narrador la leía.
+_ETIQUETA = re.compile(r"\[[^\]]{1,300}\]")
 
 #: Formatos de salida por extensión, con su frecuencia de muestreo.
 #:
@@ -81,6 +89,7 @@ class ElevenLabsProvider:
         default_voice_id: str = VOZ_POR_DEFECTO,
         stability: float = 0.5,
         similarity: float = 0.8,
+        style: float = 0.0,
         timeout: int = 120,
     ) -> None:
         if not api_key:
@@ -90,12 +99,18 @@ class ElevenLabsProvider:
         self._voz = default_voice_id
         self._stability = stability
         self._similarity = similarity
+        self._style = style
         self._timeout = timeout
 
     @property
     def soporta_etiquetas(self) -> bool:
         """Si el modelo actúa las etiquetas `[warmly]` o las lee en voz alta."""
         return _ETIQUETAS_SOPORTADAS.get(self._model, False)
+
+    @property
+    def cache_fingerprint(self) -> str:
+        """Modelo y ajustes: cambiarlos cambia cómo suena, así que cambia la clave."""
+        return f"elevenlabs:{self._model}:{self._stability}:{self._similarity}:{self._style}"
 
     async def synthesize(
         self,
@@ -121,6 +136,12 @@ class ElevenLabsProvider:
                 "similarity_boost": self._similarity,
             },
         }
+        if self._style and self._model in _ACEPTAN_STYLE:
+            cuerpo["voice_settings"] = {
+                **cuerpo["voice_settings"],  # type: ignore[dict-item]
+                "style": self._style,
+                "use_speaker_boost": True,
+            }
         if speed != 1.0 and self._model in _ACEPTAN_SPEED:
             cuerpo["voice_settings"] = {**cuerpo["voice_settings"], "speed": speed}  # type: ignore[dict-item]
 

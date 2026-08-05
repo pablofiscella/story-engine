@@ -157,8 +157,11 @@ async def test_una_toma_cortada_no_pasa(
 
     class DevuelveLaMitad(FakeVoiceProvider):
         async def synthesize(self, text, **kw):
-            mitad = " ".join(text.split()[: max(1, len(text.split()) // 4)])
-            return await super().synthesize(mitad, **kw)
+            # se corta lo que se DICE, no la dirección de actuación
+            import re
+
+            dicho = re.sub(r"\[[^\]]*\]", "", text).split()
+            return await super().synthesize(" ".join(dicho[: max(1, len(dicho) // 4)]), **kw)
 
     story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
     with pytest.raises(ProviderError, match="cortada"):
@@ -210,8 +213,7 @@ async def test_narrar_sin_proveedor_avisa_bien(
     ("escrito", "dicho"),
     [
         ("«Dino miró el cielo»", "Dino miró el cielo"),  # se leía como ">>"
-        ("Dino —el más chiquito— saltó", "Dino, el más chiquito, saltó"),
-        ("Y entonces…", "Y entonces."),
+        ("**Dino** saltó", "Dino saltó"),
         ("Dino  saltó   feliz", "Dino saltó feliz"),
     ],
 )
@@ -220,19 +222,36 @@ def test_limpia_lo_que_se_lee_mal_en_voz_alta(escrito: str, dicho: str) -> None:
     assert para_decir(escrito) == dicho
 
 
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "Y entonces… ¡apareció!",
+        "Había una vez... un dino chiquitito",
+        "¿Sabés qué pasó? ¡Se perdió!",
+        "—¡Ay, no! —gritó Toti",
+    ],
+)
+def test_no_toca_lo_que_marca_el_RITMO(texto: str) -> None:
+    """Los puntos suspensivos hacen que el modelo tome aire, y los signos de
+    exclamación le levantan el tono. Son la herramienta principal para que un cuento
+    no suene a noticiero. Este código los borraba: aplanaba justo lo que hay que
+    exagerar."""
+    assert para_decir(texto) == texto
+
+
 async def test_el_subtitulo_conserva_la_puntuacion_linda(
     tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
 ) -> None:
     """Limpiar para el TTS no puede ensuciar lo que se ve en pantalla."""
     story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
-    story.scenes[0].narration = "Dino —el más chiquito— saltó feliz."
-    story.scenes[0].subtitle = "Dino —el más chiquito— saltó feliz."
+    story.scenes[0].narration = "«Dino» saltó feliz."
+    story.scenes[0].subtitle = "«Dino» saltó feliz."
 
     prov = FakeVoiceProvider()
     await StoryNarrator(prov).narrate(story, tmp_path)
 
-    assert "—" not in prov.llamadas[0]["text"]  # lo que se dice
-    assert "—" in story.scenes[0].subtitle  # lo que se ve
+    assert "«" not in prov.llamadas[0]["text"]  # lo que se dice
+    assert "«" in story.scenes[0].subtitle  # lo que se ve
 
 
 # --- medir --------------------------------------------------------------------
@@ -270,3 +289,31 @@ def test_la_concurrencia_respeta_el_limite_del_plan() -> None:
     from engine.generators.narrator import CONCURRENCIA
 
     assert CONCURRENCIA <= 3
+
+
+def test_al_escritor_se_le_pide_que_escriba_para_leer_en_voz_alta() -> None:
+    """La receta de cuento infantil de Pablo (5-jul-2026): los puntos suspensivos
+    hacen tomar aire, las exclamaciones levantan el tono y los diminutivos suavizan.
+    Sin eso el modelo lee como un noticiero, aunque la voz sea buena."""
+    from engine.core.enums import AgeRange, Language
+    from engine.prompts.narration import system_prompt
+
+    prompt = system_prompt(
+        language=Language.ES_AR, age_range=AgeRange.PRESCHOOL, value_moral="compartir"
+    )
+    assert "SE LEA EN VOZ ALTA" in prompt
+    assert "Puntos suspensivos" in prompt
+
+
+def test_la_direccion_de_actuacion_va_en_toda_escena() -> None:
+    """Sin el contexto de "esto es un cuento infantil argentino", el modelo lee
+    plano. Es la diferencia entre una voz buena y una narración."""
+    from engine.core.enums import Emotion, NarrativeBeat
+    from engine.prompts.voz import DIRECCION, direccion_de_escena
+
+    primera = direccion_de_escena(NarrativeBeat.HOOK, Emotion.CURIOSITY, es_primera=True)
+    otra = direccion_de_escena(NarrativeBeat.FAILURE, Emotion.SADNESS, es_primera=False)
+
+    assert DIRECCION in primera and DIRECCION in otra
+    assert "[warmly] [slows down]" in primera  # la apertura, confirmada al oído
+    assert "[sadly]" in otra

@@ -71,6 +71,13 @@ def system_prompt(*, language: Language, age_range: AgeRange, value_moral: str) 
         "el audio no entra en la escena.\n"
         "- NO escribas diálogo entrecomillado. Contá lo que el personaje dice, no lo "
         "pongas entre comillas.\n"
+        "- ESCRIBÍ PARA QUE SE LEA EN VOZ ALTA, no para que se lea en silencio:\n"
+        "  · Puntos suspensivos antes de una sorpresa o un cambio: hacen que el "
+        "narrador tome aire y generan expectativa. \"Abrió la puerta y... ¡sorpresa!\"\n"
+        "  · Signos de exclamación y de pregunta de verdad, no de adorno: son los que "
+        "levantan el tono.\n"
+        "  · Diminutivos rioplatenses cuando queden naturales (chiquitito, un ratito, "
+        "el osito): suavizan la lectura.\n"
         "- Nada de emojis ni de asteriscos."
     )
 
