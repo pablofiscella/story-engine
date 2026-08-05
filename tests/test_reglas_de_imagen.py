@@ -362,3 +362,52 @@ async def test_ninguna_escena_pide_dos_cosas_opuestas(
         cerca = "CÁMARA CERCA" in escena.image_prompt
         lejos = "escena COMPLETA" in escena.image_prompt
         assert cerca != lejos, f"escena {escena.index} pide las dos cosas"
+
+
+# --- Regla 7: lo que decidió el motor no depende de que el texto lo nombre --------
+
+
+async def test_el_objeto_esta_en_el_prompt_aunque_la_narracion_no_lo_nombre(
+    tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """El bug: la narración del intento salió "Dino se fue a un rincón y jugó solo,
+    Rexo miró" — sin la palabra "pelota". El prompt de imagen se arma con la
+    narración, así que el objeto desapareció y el modelo lo dibujó jugando con
+    piedras. El escritor, apretado por el presupuesto de palabras, es el primero que
+    deja de nombrar el objeto."""
+    story = await _historia(tema_dinos, estilo_3d, dino, tuca)
+    intento = next(e for e in story.scenes if e.beat is NarrativeBeat.ATTEMPT)
+
+    # se simula lo que hace el escritor cuando le falta lugar
+    intento.narration = "Dino se fue a un rincón y jugó solo, Rexo miró."
+    prompt = image_prompts.compose(
+        intento, style=estilo_3d, theme=tema_dinos, characters=story.characters_by_id
+    )
+    assert "pelota" not in intento.narration
+    assert intento.prop.upper() in prompt
+    assert "No lo reemplaces por otra cosa" in prompt
+
+
+async def test_el_objeto_va_en_todas_las_escenas_que_lo_usan(
+    tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    story = await _historia(tema_dinos, estilo_3d, dino, tuca)
+    con_objeto = [e for e in story.scenes if e.prop]
+    assert len(con_objeto) >= 4  # compartir gira alrededor del objeto casi siempre
+    for escena in con_objeto:
+        assert escena.prop == tema_dinos.props[0]
+        assert escena.prop.upper() in escena.image_prompt
+
+
+async def test_un_valor_sin_objeto_no_inventa_ninguno(
+    tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """`valentia` no necesita un objeto: pedirle uno al ilustrador sería meter en la
+    escena algo que la historia no tiene."""
+    story = await _historia(tema_dinos, estilo_3d, dino, tuca, valor=EducationalValue.COURAGE)
+    assert all(not e.prop for e in story.scenes)
+    assert all("EL OBJETO DE LA HISTORIA" not in e.image_prompt for e in story.scenes)
+
+
+def test_el_negativo_prohibe_los_objetos_inventados(estilo_3d: Style) -> None:
+    assert "objetos o juguetes que la historia no nombró" in image_prompts.negative(estilo_3d)

@@ -29,6 +29,11 @@ REGLAS DURAS (las tres salieron de mirar un cuento ilustrado real que salió mal
    pelean, el modelo elige una y no siempre la que importa: el plano corto del
    aprendizaje salía tan abierto como el resto porque otro bloque pedía "escena
    completa con los personajes apoyados en el suelo".
+7. **Lo que decidió el motor no puede depender de que el texto lo nombre.** El objeto
+   del conflicto lo elige el motor, pero el prompt se arma con la NARRACIÓN — y el
+   escritor, apretado por el presupuesto de palabras, es el primero que deja de
+   nombrarlo. "Dino se fue a un rincón y jugó solo" no dice "pelota", así que el
+   modelo lo dibujó jugando con piedras. Va como bloque propio, siempre.
 """
 
 from __future__ import annotations
@@ -81,6 +86,7 @@ _NEGATIVO_BASE = (
     "texto, letras, palabras, marca de agua, logo, firma, "
     "manos deformes, dedos de más, rostros deformes, "
     "personajes de más, animales de fondo con cara o actitud de personaje, "
+    "objetos o juguetes que la historia no nombró, "
     "contenido perturbador, violencia, personajes de marcas registradas"
 )
 
@@ -132,6 +138,13 @@ def compose(
     bloques.append(f"Qué está pasando: {scene.narration or scene.purpose}")
     if scene.visual_note:
         bloques.append(scene.visual_note)
+
+    # --- Regla 7: lo que decidió el motor no depende de que el texto lo nombre ---
+    if scene.prop:
+        bloques.append(
+            f"EL OBJETO DE LA HISTORIA ES {scene.prop.upper()} y tiene que verse en "
+            "esta escena. No lo reemplaces por otra cosa ni agregues otros juguetes"
+        )
 
     # --- Regla 2: continuidad de escenario -----------------------------------
     bloques.append(f"Lugar: {scene.location}, ambientado en {theme.name.lower()}")

@@ -74,6 +74,16 @@ class ScenePlan(EngineModel):
             "modelo los inventa— pero sin contarlos como presentes en la escena."
         ),
     )
+    prop: str = Field(
+        default="",
+        description=(
+            "El objeto del conflicto en esta escena ('una pelota de colores'), si lo "
+            "hay. Va aparte y no metido en el propósito: el prompt de imagen se arma "
+            "con la NARRACIÓN, y el escritor —que tiene el presupuesto de palabras "
+            "apretado— es el primero que deja de nombrarlo. Cuando eso pasó, el "
+            "modelo dibujó a Dino jugando con piedras."
+        ),
+    )
     shot: ShotType = Field(
         default=ShotType.MEDIUM,
         description=(

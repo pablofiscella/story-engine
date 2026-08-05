@@ -101,6 +101,13 @@ class Scene(EngineModel):
         default_factory=list,
         description="Personajes en burbuja de pensamiento o recuerdo: no están presentes.",
     )
+    prop: str = Field(
+        default="",
+        description=(
+            "El objeto del conflicto, si esta escena lo tiene. Lo elige el motor y va "
+            "al prompt de imagen sí o sí, aunque la narración no lo nombre."
+        ),
+    )
     visual_note: str = Field(
         default="",
         description=(
@@ -178,6 +185,7 @@ class Scene(EngineModel):
             "emotion": plan.emotion,
             "character_emotions": dict(plan.character_emotions),
             "camera": CameraDirection(shot=plan.shot),
+            "prop": plan.prop,
             "visual_note": plan.visual_note,
             "imagined_character_ids": list(plan.imagined_character_ids),
             "narration": narration,

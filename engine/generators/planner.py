@@ -82,6 +82,15 @@ class StoryPlanner:
             vistos[beat] = repeticion + 1
             elenco = self._elenco_de(perfil, beat, protagonist, companion)
             nota = self._nota_visual(perfil, beat, protagonist, companion, objeto)
+            proposito = self._redactar_proposito(
+                perfil,
+                beat,
+                protagonist,
+                companion,
+                objeto=objeto,
+                repeticion=repeticion,
+                total_del_beat=beats.count(beat),
+            )
             # El compañero nombrado en la nota visual pero ausente de la escena está
             # siendo imaginado (una burbuja de pensamiento, un recuerdo).
             imaginados = (
@@ -93,15 +102,7 @@ class StoryPlanner:
                 ScenePlan(
                     index=i,
                     beat=beat,
-                    purpose=self._redactar_proposito(
-                        perfil,
-                        beat,
-                        protagonist,
-                        companion,
-                        objeto=objeto,
-                        repeticion=repeticion,
-                        total_del_beat=beats.count(beat),
-                    ),
+                    purpose=proposito,
                     duration_s=dur,
                     location=lugar,
                     character_ids=elenco,
@@ -110,6 +111,11 @@ class StoryPlanner:
                         perfil, beat, companion, elenco=elenco, imaginados=imaginados
                     ),
                     shot=SHOT_BY_BEAT[beat],
+                    # El objeto está en la escena si el guion de este beat lo usa. Va
+                    # como campo propio y no confiado al texto: el prompt de imagen se
+                    # arma con la narración, y el escritor deja de nombrarlo apenas le
+                    # falta lugar. Cuando pasó, el modelo dibujó a Dino con piedras.
+                    prop=objeto if objeto and (objeto in proposito or objeto in nota) else "",
                     visual_note=nota,
                     imagined_character_ids=imaginados,
                 )

@@ -73,6 +73,7 @@ def tema_dinos() -> Theme:
         description="Un valle prehistórico lleno de helechos gigantes.",
         palette=Palette(primary="#2E7D32", secondary="#FFB300", accent="#D84315"),
         locations=["el claro de los helechos", "la laguna tibia"],
+        props=["una pelota de colores"],
         character_ids=["dino-rex", "tuca-tucan"],
         default_style_id="pixar-3d",
     )
