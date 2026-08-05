@@ -23,6 +23,7 @@ from engine.core.constants import (
     MIN_SCENE_DURATION_S,
     MIN_SCENES,
     SCENE_PACING_S,
+    SHOT_BY_BEAT,
 )
 from engine.core.enums import AgeRange, EducationalValue, Emotion, NarrativeBeat
 from engine.core.exceptions import DomainError
@@ -108,6 +109,7 @@ class StoryPlanner:
                     character_emotions=self._emociones_de(
                         perfil, beat, companion, elenco=elenco, imaginados=imaginados
                     ),
+                    shot=SHOT_BY_BEAT[beat],
                     visual_note=nota,
                     imagined_character_ids=imaginados,
                 )
@@ -251,8 +253,12 @@ class StoryPlanner:
         if companion is None:
             return {}
         emociones: dict[str, Emotion] = {}
-        if companion.id in elenco:
-            emociones[companion.id] = perfil.companion_emotions[beat]
+        suya = perfil.companion_emotions[beat]
+        # Solo se anota lo que DIFIERE. Si el compañero siente lo mismo que la escena
+        # —en el final los dos están contentos— anotarlo sería ruido que hay que
+        # mantener sincronizado con el tono para siempre.
+        if companion.id in elenco and suya is not perfil.emotions[beat]:
+            emociones[companion.id] = suya
         if companion.id in imaginados:
             # Lo imaginado es lo que el protagonista se está perdiendo, así que en la
             # burbuja siempre está contento. Es lo que hace que la escena se lea: acá

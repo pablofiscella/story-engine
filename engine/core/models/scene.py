@@ -164,18 +164,23 @@ class Scene(EngineModel):
 
         Es el único camino previsto: garantiza que la escena escrita no se desvíe de
         lo que el motor decidió (mismo beat, misma duración, mismos personajes).
+
+        Lo que venga en `extra` pisa al plan: sirve para afinar una escena suelta a
+        mano sin tener que rearmar el plan entero.
         """
-        return cls(
-            index=plan.index,
-            beat=plan.beat,
-            purpose=plan.purpose,
-            duration_s=plan.duration_s,
-            location=plan.location,
-            character_ids=list(plan.character_ids),
-            emotion=plan.emotion,
-            character_emotions=dict(plan.character_emotions),
-            visual_note=plan.visual_note,
-            imagined_character_ids=list(plan.imagined_character_ids),
-            narration=narration,
-            **extra,  # type: ignore[arg-type]
-        )
+        campos: dict[str, object] = {
+            "index": plan.index,
+            "beat": plan.beat,
+            "purpose": plan.purpose,
+            "duration_s": plan.duration_s,
+            "location": plan.location,
+            "character_ids": list(plan.character_ids),
+            "emotion": plan.emotion,
+            "character_emotions": dict(plan.character_emotions),
+            "camera": CameraDirection(shot=plan.shot),
+            "visual_note": plan.visual_note,
+            "imagined_character_ids": list(plan.imagined_character_ids),
+            "narration": narration,
+        }
+        campos.update(extra)
+        return cls(**campos)  # type: ignore[arg-type]

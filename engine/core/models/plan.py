@@ -28,7 +28,7 @@ from engine.core.constants import (
     MIN_SCENE_DURATION_S,
     MIN_SCENES,
 )
-from engine.core.enums import Emotion, NarrativeBeat
+from engine.core.enums import Emotion, NarrativeBeat, ShotType
 from engine.core.exceptions import InvalidArcError, InvalidDurationError
 from engine.core.models.base import EngineModel, Slug
 
@@ -72,6 +72,13 @@ class ScenePlan(EngineModel):
             "burbuja de pensamiento, un recuerdo, un dibujo. Van aparte de "
             "`character_ids` porque el prompt tiene que describirlos igual —si no, el "
             "modelo los inventa— pero sin contarlos como presentes en la escena."
+        ),
+    )
+    shot: ShotType = Field(
+        default=ShotType.MEDIUM,
+        description=(
+            "Encuadre. Lo decide el motor por beat: sin esto todas las escenas salen "
+            "en plano medio y el gancho y el intento dan la misma imagen."
         ),
     )
     visual_note: str = Field(

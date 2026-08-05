@@ -118,6 +118,10 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         question="¿Y vos, qué compartís con tus amigos?",
         needs_prop=True,
         visual_notes={
+            NarrativeBeat.PROBLEM: (
+                "{companero} mira {objeto} y estira una mano hacia él; {protagonista} "
+                "lo aprieta contra el pecho y lo aleja"
+            ),
             NarrativeBeat.FAILURE: (
                 "burbuja de pensamiento sobre la cabeza de {protagonista}, donde se "
                 "imagina jugando con {companero} y {objeto}, los dos contentos"
@@ -138,7 +142,12 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
             NarrativeBeat.PROBLEM: (
                 "{companero} quiere jugar con {objeto} y {protagonista} se niega"
             ),
-            NarrativeBeat.ATTEMPT: "{protagonista} intenta disfrutar {objeto} solo",
+            # Tiene que nombrar a {companero} y decir DÓNDE se pone: si el intento es
+            # solo "disfrutar el objeto solo", sale la misma imagen que el gancho.
+            NarrativeBeat.ATTEMPT: (
+                "{protagonista} se lleva {objeto} a un rincón y juega de espaldas, "
+                "mientras {companero} lo mira desde lejos"
+            ),
             NarrativeBeat.FAILURE: (
                 "Jugar solo con {objeto} resulta aburrido: {protagonista} se queda sin nadie"
             ),

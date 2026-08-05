@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
-from engine.core.enums import AgeRange, NarrativeBeat, StoryStatus
+from engine.core.enums import AgeRange, NarrativeBeat, ShotType, StoryStatus
 
 #: Orden canónico del arco. El planificador puede REPETIR beats (varios intentos)
 #: o saltear alguno en historias muy cortas, pero nunca alterar este orden relativo.
@@ -24,6 +24,27 @@ CANONICAL_ARC: tuple[NarrativeBeat, ...] = (
 #: Posición de cada beat, para validar orden sin recorrer la tupla.
 BEAT_ORDER: MappingProxyType[NarrativeBeat, int] = MappingProxyType(
     {beat: i for i, beat in enumerate(CANONICAL_ARC)}
+)
+
+#: Con qué encuadre se cuenta cada beat.
+#:
+#: Antes todas las escenas salían en plano medio y el cuento se veía plano: el
+#: gancho y el intento daban literalmente la misma imagen —el protagonista solo con
+#: el objeto— porque tenían el mismo elenco y el mismo encuadre.
+#:
+#: El criterio es de cine, no de variedad por variedad: el gancho ABRE (hay que ver
+#: dónde estamos), el conflicto se cuenta a media distancia (hay que ver a los dos y
+#: el objeto), el aprendizaje es un momento de cara, y el final vuelve a abrir para
+#: mostrar el mundo ya arreglado.
+SHOT_BY_BEAT: MappingProxyType[NarrativeBeat, ShotType] = MappingProxyType(
+    {
+        NarrativeBeat.HOOK: ShotType.WIDE,
+        NarrativeBeat.PROBLEM: ShotType.MEDIUM,
+        NarrativeBeat.ATTEMPT: ShotType.OVER_SHOULDER,
+        NarrativeBeat.FAILURE: ShotType.MEDIUM,
+        NarrativeBeat.LESSON: ShotType.CLOSE_UP,
+        NarrativeBeat.ENDING: ShotType.WIDE,
+    }
 )
 
 # --- Duración -------------------------------------------------------------------

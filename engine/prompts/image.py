@@ -39,7 +39,9 @@ from engine.core.models.theme import Theme
 _ENCUADRE: dict[str, str] = {
     "plano_general": "plano general, se ve todo el escenario",
     "plano_medio": "plano medio",
-    "primer_plano": "primer plano del rostro",
+    # No "primer plano del rostro" a secas: el beat del aprendizaje es un gesto
+    # (ofrecer el juguete) y un encuadre solo de cara lo dejaría fuera de cuadro.
+    "primer_plano": "plano corto: las caras y las manos llenan el cuadro",
     "sobre_hombro": "plano por encima del hombro",
 }
 

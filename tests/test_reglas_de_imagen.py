@@ -277,3 +277,54 @@ def test_la_expresion_propia_del_personaje_le_gana_al_gesto_generico(dino: Chara
     propio = dino.model_copy(update={"expressions": {Emotion.FRUSTRATION: "infla los cachetes"}})
     assert propio.expression_for(Emotion.FRUSTRATION, "ceño fruncido") == "infla los cachetes"
     assert propio.expression_for(Emotion.JOY, "sonrisa grande") == "sonrisa grande"
+
+
+# --- Que no se repita la misma imagen --------------------------------------------
+
+
+async def test_el_gancho_y_el_intento_no_dan_la_misma_imagen(
+    tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """El bug: las dos escenas salieron casi idénticas —el protagonista solo con la
+    pelota, mismo encuadre, mismo lugar— porque tenían el mismo elenco y el mismo
+    plano medio. Se separan por elenco Y por encuadre."""
+    story = await _historia(tema_dinos, estilo_3d, dino, tuca)
+    gancho = next(e for e in story.scenes if e.beat is NarrativeBeat.HOOK)
+    intento = next(e for e in story.scenes if e.beat is NarrativeBeat.ATTEMPT)
+
+    assert gancho.camera.shot is not intento.camera.shot
+    assert tuca.id in intento.character_ids  # mira desde lejos
+    assert tuca.id not in gancho.character_ids
+
+
+async def test_el_motor_elige_el_encuadre_de_cada_beat(
+    tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """Sin esto salen seis planos medios seguidos, que es un video plano."""
+    from engine.core.constants import SHOT_BY_BEAT
+
+    story = await _historia(tema_dinos, estilo_3d, dino, tuca)
+    for escena in story.scenes:
+        assert escena.camera.shot is SHOT_BY_BEAT[escena.beat]
+        assert image_prompts._ENCUADRE[escena.camera.shot.value] in escena.image_prompt
+    assert len({e.camera.shot for e in story.scenes}) > 1
+
+
+def test_todos_los_beats_tienen_encuadre() -> None:
+    from engine.core.constants import SHOT_BY_BEAT
+
+    faltan = [b.value for b in NarrativeBeat if b not in SHOT_BY_BEAT]
+    assert not faltan, f"sin encuadre definido: {faltan}"
+
+
+async def test_en_el_problema_el_companero_mira_el_objeto(
+    tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """La narración decía que Rexo miraba la pelota y en la imagen miraba a Dino.
+    El gesto genérico no alcanza: hay que decir hacia dónde va la atención."""
+    story = await _historia(tema_dinos, estilo_3d, dino, tuca)
+    problema = next(e for e in story.scenes if e.beat is NarrativeBeat.PROBLEM)
+
+    assert tuca.name in problema.visual_note
+    assert "mira" in problema.visual_note
+    assert problema.visual_note in problema.image_prompt
