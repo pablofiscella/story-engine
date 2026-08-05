@@ -202,3 +202,34 @@ def test_sin_hora_de_entrada_el_texto_esta_desde_el_principio(tmp_path) -> None:
     quedan."""
     filtro = ShortRenderer()._texto("Dino", tmp_path / "t.txt", y="0", tope=88)
     assert "enable=" not in filtro
+
+
+# --- las transiciones -------------------------------------------------------------
+
+
+def test_las_imagenes_se_cruzan_en_vez_de_saltar() -> None:
+    """Seis fotos que cambian de golpe se ven como una presentación de diapositivas.
+    El motor viejo tenía este mismo cruce en el camino de Remotion y lo perdió en el
+    de ffmpeg, donde los tramos se pegaban con `concat -c copy`."""
+    from engine.render.video import TRANSICION_S, _encadenar
+
+    cadena = _encadenar(["[a]", "[b]", "[c]"], [5.0, 4.0, 3.0])
+    assert cadena.count("xfade") == 2
+    assert f"duration={TRANSICION_S}" in cadena
+    assert cadena.endswith("[vcrudo]")
+
+
+def test_cada_cruce_arranca_donde_termina_su_escena() -> None:
+    """El offset mal calculado es lo que desincroniza la imagen del audio: la escena
+    se iría antes o después de lo que dura su narración."""
+    from engine.render.video import TRANSICION_S, _encadenar
+
+    cadena = _encadenar(["[a]", "[b]", "[c]"], [5.0, 4.0, 3.0])
+    offsets = [float(x.split("offset=")[1].split("[")[0]) for x in cadena.split(";")]
+    assert offsets == [5.0 - TRANSICION_S, 9.0 - TRANSICION_S]
+
+
+def test_una_sola_escena_no_necesita_cruce() -> None:
+    from engine.render.video import _encadenar
+
+    assert "xfade" not in _encadenar(["[a]"], [5.0])

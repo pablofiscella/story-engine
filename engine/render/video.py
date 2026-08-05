@@ -75,6 +75,13 @@ FPS = 30
 #: claras y sobre las oscuras de un dibujo infantil.
 CONTORNO = 8
 
+#: Cuánto dura el fundido entre una imagen y la siguiente.
+#:
+#: Seis fotos que se cambian de golpe se ven como una presentación de diapositivas.
+#: Con un cruce corto el cuento fluye. Corto a propósito: más de medio segundo en un
+#: short se siente lento, porque la escena entera dura cinco.
+TRANSICION_S = 0.4
+
 #: Cuánto antes de que la voz lo diga aparece el texto del cierre.
 #:
 #: No desde el principio del tramo: la pregunta tiene que entrar junto con lo que se
@@ -101,6 +108,36 @@ def _envolver(texto: str, largo: int = LARGO_DE_LINEA) -> list[str]:
     return lineas or [""]
 
 
+def _encadenar(tramos: list[str], duraciones: list[float]) -> str:
+    """Los tramos de video, unidos con un fundido cruzado entre cada par.
+
+    `xfade` cruza de a dos, así que hay que encadenarlo: el resultado de un cruce es
+    la entrada del siguiente. El `offset` es CUÁNDO empieza el cruce medido desde el
+    principio del acumulado, y por eso va sumando las duraciones.
+
+    Se usa esto y no `concat` porque seis fotos que se cambian de golpe se ven como
+    una presentación de diapositivas. El motor viejo tenía el mismo cruce (0.4s) en
+    el camino de Remotion y lo perdió en el camino de ffmpeg, donde los tramos se
+    pegaban con `concat -c copy`.
+    """
+    if len(tramos) == 1:
+        return f"{tramos[0]}null[vcrudo]"
+
+    partes: list[str] = []
+    acumulado = duraciones[0]
+    anterior = tramos[0]
+    for i, tramo in enumerate(tramos[1:], start=1):
+        etiqueta = "[vcrudo]" if i == len(tramos) - 1 else f"[x{i}]"
+        offset = max(0.0, acumulado - TRANSICION_S)
+        partes.append(
+            f"{anterior}{tramo}xfade=transition=fade:"
+            f"duration={TRANSICION_S}:offset={offset:.3f}{etiqueta}"
+        )
+        acumulado += duraciones[i] if i < len(duraciones) else 0.0
+        anterior = etiqueta
+    return ";".join(partes)
+
+
 class ShortRenderer:
     """Arma el MP4 de una historia ya ilustrada y narrada."""
 
@@ -121,7 +158,11 @@ class ShortRenderer:
         tramos: list[str] = []
 
         # --- el título, sobre la primera imagen ---------------------------------
-        entradas += ["-loop", "1", "-t", f"{TITULO_S}", "-i", story.scenes[0].image_path]
+        # También con el margen del cruce: si no, el título se ve 0.4s menos.
+        entradas += [
+            "-loop", "1", "-t", f"{TITULO_S + TRANSICION_S:.3f}",
+            "-i", story.scenes[0].image_path,
+        ]
         placa = self._texto(
             story.metadata.title or "Un cuento",
             salida.parent / "_titulo.txt",
@@ -132,9 +173,13 @@ class ShortRenderer:
         tramos.append("[titulo]")
 
         # --- las escenas ---------------------------------------------------------
+        # Cada tramo se genera MÁS LARGO que su escena, porque el cruce con el
+        # siguiente se come `TRANSICION_S`. Sin ese margen la imagen se iría antes de
+        # que termine su narración.
+        duraciones = [e.real_duration_s + PAUSA_ENTRE_ESCENAS_S for e in story.scenes]
         for i, escena in enumerate(story.scenes, start=1):
-            dur = escena.real_duration_s + PAUSA_ENTRE_ESCENAS_S
-            entradas += ["-loop", "1", "-t", f"{dur:.3f}", "-i", escena.image_path]
+            largo = duraciones[i - 1] + TRANSICION_S
+            entradas += ["-loop", "1", "-t", f"{largo:.3f}", "-i", escena.image_path]
             filtros.append(f"[{i}:v]{self._encuadrar()}[v{i}]")
             tramos.append(f"[v{i}]")
 
@@ -170,12 +215,13 @@ class ShortRenderer:
             # pausa es el aire que queda al terminar de hablar, no antes de empezar.
             filtros.append(f"[{base + j}:a]apad=pad_dur={pausa:.3f}[a{j}]")
 
-        n_v = len(tramos)
-        cadena_v = "".join(tramos) + f"concat=n={n_v}:v=1:a=0[vcrudo]"
+        cadena_v = _encadenar(tramos, [TITULO_S, *duraciones])
         # El fundido al negro arranca cuando arranca la cola: se apaga mientras suena
         # el último silencio, en vez de cortar en la última sílaba.
-        total = TITULO_S + sum(e.real_duration_s + PAUSA_ENTRE_ESCENAS_S for e in story.scenes)
-        total += cierre_s
+        # Cada cruce consume `TRANSICION_S` del total y los tramos se generaron con
+        # ese margen de más, así que los dos efectos se cancelan — salvo el último
+        # cruce, que sí acorta el resultado.
+        total = TITULO_S + sum(duraciones) + cierre_s - TRANSICION_S
         arranque = max(0.0, total - COLA_FINAL_S)
         cadena_v += f";[vcrudo]fade=t=out:st={arranque:.3f}:d={COLA_FINAL_S}[video]"
 
@@ -240,7 +286,9 @@ class ShortRenderer:
         aparicion = f":enable='gte(t,{desde:.3f})'" if desde is not None else ""
         return (
             f"drawtext=fontfile={FUENTE}:textfile={archivo}:"
-            f"fontcolor=white:fontsize={tam}:line_spacing=14:"
+            # `text_align=C` centra las LÍNEAS entre sí. Sin esto, el bloque queda
+            # centrado en el cuadro pero la segunda línea alineada a la izquierda.
+            f"fontcolor=white:fontsize={tam}:line_spacing=14:text_align=C:"
             f"borderw={CONTORNO}:bordercolor=black@0.85:"
             f"x=(w-text_w)/2:y={y}{aparicion}"
         )
