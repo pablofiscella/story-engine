@@ -25,11 +25,15 @@ REGLAS DURAS (las tres salieron de mirar un cuento ilustrado real que salió mal
 5. **Cada uno con su cara.** La emoción se pide por PERSONAJE, no por escena. Con una
    sola emoción por escena, el que no comparte y el que se queda afuera salían con la
    misma cara de enojo y los mismos brazos cruzados.
+6. **Ninguna instrucción puede contradecir a otra.** Cuando dos partes del prompt se
+   pelean, el modelo elige una y no siempre la que importa: el plano corto del
+   aprendizaje salía tan abierto como el resto porque otro bloque pedía "escena
+   completa con los personajes apoyados en el suelo".
 """
 
 from __future__ import annotations
 
-from engine.core.enums import Emotion
+from engine.core.enums import Emotion, ShotType
 from engine.core.models.character import Character
 from engine.core.models.scene import Scene
 from engine.core.models.style import Style
@@ -43,6 +47,33 @@ _ENCUADRE: dict[str, str] = {
     # (ofrecer el juguete) y un encuadre solo de cara lo dejaría fuera de cuadro.
     "primer_plano": "plano corto: las caras y las manos llenan el cuadro",
     "sobre_hombro": "plano por encima del hombro",
+}
+
+#: Cómo se pide el fondo, según cuán cerca esté la cámara.
+#:
+#: Existe porque si la referencia de estilo es una hoja de personajes sobre fondo
+#: blanco, el modelo copia ese vacío y los personajes quedan flotando. Pero pedir
+#: "escena completa con los personajes apoyados en el suelo" en un plano corto es
+#: contradictorio: el aprendizaje salía tan abierto como el resto porque el prompt
+#: pedía las dos cosas a la vez y el modelo elegía una.
+_FONDO: dict[ShotType, str] = {
+    ShotType.WIDE: (
+        "escena COMPLETA: se ve todo el lugar, con piso y horizonte, los personajes "
+        "apoyados en el suelo, nunca flotando sobre fondo liso"
+    ),
+    ShotType.MEDIUM: (
+        "escena COMPLETA: con piso y fondo del lugar, los personajes apoyados en el "
+        "suelo, nunca flotando sobre fondo liso"
+    ),
+    ShotType.OVER_SHOULDER: (
+        "escena COMPLETA: con piso y fondo del lugar, los personajes apoyados en el "
+        "suelo, nunca flotando sobre fondo liso"
+    ),
+    ShotType.CLOSE_UP: (
+        "CÁMARA CERCA: los personajes ocupan casi todo el alto del cuadro y se los ve "
+        "de la cintura para arriba. Detrás se sigue viendo el lugar, aunque quede "
+        "desenfocado — nunca fondo liso ni blanco"
+    ),
 }
 
 #: Lo que nunca queremos, pase lo que pase. Se suma al negativo del estilo.
@@ -114,13 +145,7 @@ def compose(
         f"paleta del tema: {theme.palette.primary}, {theme.palette.secondary}, "
         f"{theme.palette.accent}"
     )
-    # Si la referencia de estilo es una hoja de personajes sobre fondo blanco, el
-    # modelo copia ese vacío y los personajes quedan flotando. Hay que pedir el
-    # escenario de forma explícita, siempre.
-    bloques.append(
-        "escena COMPLETA: con piso y fondo del lugar, los personajes apoyados en el "
-        "suelo, nunca flotando sobre fondo liso"
-    )
+    bloques.append(_FONDO[scene.camera.shot])
     return ". ".join(b.rstrip(". ") for b in bloques if b) + "."
 
 

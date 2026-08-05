@@ -328,3 +328,37 @@ async def test_en_el_problema_el_companero_mira_el_objeto(
     assert tuca.name in problema.visual_note
     assert "mira" in problema.visual_note
     assert problema.visual_note in problema.image_prompt
+
+
+async def test_el_plano_corto_no_pide_tambien_la_escena_completa(
+    tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """El bug: el aprendizaje salía tan abierto como el resto. El prompt pedía "las
+    caras llenan el cuadro" Y "escena completa con los personajes apoyados en el
+    suelo". Cuando dos instrucciones se pelean, el modelo elige una."""
+    story = await _historia(tema_dinos, estilo_3d, dino, tuca)
+    corto = next(e for e in story.scenes if e.beat is NarrativeBeat.LESSON)
+
+    assert "CÁMARA CERCA" in corto.image_prompt
+    assert "apoyados en el suelo" not in corto.image_prompt
+    # pero el fondo se sigue pidiendo: sin eso los personajes flotan en blanco
+    assert "nunca fondo liso" in corto.image_prompt
+
+
+def test_todos_los_encuadres_dicen_como_va_el_fondo() -> None:
+    """Un encuadre sin entrada acá rompe con KeyError, que es lo que queremos: si se
+    agrega un plano nuevo hay que pensar qué se ve detrás."""
+    from engine.core.enums import ShotType
+
+    faltan = [s.value for s in ShotType if s not in image_prompts._FONDO]
+    assert not faltan, f"sin instrucción de fondo: {faltan}"
+
+
+async def test_ninguna_escena_pide_dos_cosas_opuestas(
+    tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    story = await _historia(tema_dinos, estilo_3d, dino, tuca)
+    for escena in story.scenes:
+        cerca = "CÁMARA CERCA" in escena.image_prompt
+        lejos = "escena COMPLETA" in escena.image_prompt
+        assert cerca != lejos, f"escena {escena.index} pide las dos cosas"
