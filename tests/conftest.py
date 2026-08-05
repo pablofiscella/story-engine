@@ -135,3 +135,18 @@ def escena(plan_valido: StoryPlan) -> Scene:
     return Scene.from_plan(
         plan_valido.scenes[0], narration="Dino asomó la cabeza entre los helechos."
     )
+
+
+@pytest.fixture(autouse=True)
+def sin_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ningún test espera el backoff de verdad.
+
+    La política de reintentos se prueba contando llamadas; esperar los segundos
+    reales solo hace lenta la suite. Sin esto, un solo test de caída del proveedor
+    agregaba 6 segundos.
+    """
+
+    async def ya(_segundos: float) -> None:
+        return None
+
+    monkeypatch.setattr("engine.core.retry.asyncio.sleep", ya)

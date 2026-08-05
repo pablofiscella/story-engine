@@ -4,19 +4,20 @@
 
 Este documento no salió de una discusión de arquitectura. Salió de mirar el primer
 cuento ilustrado de verdad que produjo el motor —6 escenas, dinosaurios, valor
-compartir— y anotar todo lo que estaba mal.
+compartir— y anotar todo lo que estaba mal. Después de arreglarlo se volvió a mirar,
+y aparecieron dos cosas más. Ese ciclo es el método, no un accidente.
 
-Los cuatro errores tienen la **misma causa de fondo**, y por eso vale la pena
-escribirlos juntos: el texto y la imagen se generan por caminos separados, y cada uno
-sabe cosas que el otro no. Cada vez que uno de los dos decide algo que el otro no se
-entera, la ilustración contradice al cuento.
+Los errores tienen la **misma causa de fondo**, y por eso vale la pena escribirlos
+juntos: el texto y la imagen se generan por caminos separados, y cada uno sabe cosas
+que el otro no. Cada vez que uno de los dos decide algo que el otro no se entera, la
+ilustración contradice al cuento.
 
 La regla general, entonces:
 
 > **Todo lo que aparece en la imagen tiene que estar dicho en el prompt, y el prompt
 > tiene que estar hecho de lo que el cuento realmente dice.**
 
-Lo que sigue son los cuatro casos concretos. Cada uno tiene su test en
+Lo que sigue son los casos concretos. Cada uno tiene su test en
 `tests/test_reglas_de_imagen.py`, con el bug que lo originó escrito en el docstring.
 
 ---
@@ -102,6 +103,49 @@ un dinosaurio bebé azul de cresta redondeada…
 
 `Story._validar_elenco` valida los imaginados igual que a los presentes: un personaje
 que la historia no conoce no puede aparecer ni siquiera en un pensamiento.
+
+---
+
+## 5. Cada uno con su cara
+
+**Qué pasó:** en la escena del problema, Dino y Rexo salieron con el mismo ceño
+fruncido y los mismos brazos cruzados. El enojado era Dino: Rexo solo quería jugar.
+
+**La causa:** `Scene.emotion` era una sola por escena y el prompt se la aplicaba igual
+a todos los presentes. Pero una escena de conflicto tiene por definición **dos lados**.
+
+Esto además explica por qué la regla 3 se cumplía a medias: la narración decía que
+Rexo *miraba la pelota* y en la imagen miraba a Dino. El gesto que se le pedía
+—"brazos cruzados, boca torcida"— contradecía el texto, y la contradicción la resolvió
+el modelo a su manera.
+
+**La regla:** la emoción se pide por PERSONAJE. `emotion` pasa a ser el tono de la
+escena (la música, y el default) y `character_emotions` dice quién siente distinto.
+El protagonista no se anota nunca: su emoción *es* el tono, y repetirla sería una
+segunda fuente de verdad para lo mismo.
+
+Cada valor educativo trae ahora la curva del compañero, que no es una sola: en
+`compartir` es el que se queda afuera, en `amistad` el que ya está jugando contento,
+en `empatía` el que está mal desde el principio, y en paciencia/valentía/perseverancia
+el que acompaña tranquilo. Un test recorre los 8 y falla si alguien agrega un noveno
+sin ella.
+
+---
+
+## 6. Dos escenas distintas tienen que verse distintas
+
+**Qué pasó:** el gancho y el intento daban casi la misma imagen — el protagonista solo
+con la pelota, mismo lugar, mismo encuadre.
+
+**La causa:** dos, sumadas. El propósito del intento era *"intenta disfrutar el objeto
+solo"*, que es exactamente lo que ya mostró el gancho; y **todas** las escenas salían
+en plano medio, porque nadie decidía el encuadre.
+
+**La regla:** el encuadre lo decide el motor por beat (`SHOT_BY_BEAT`), con criterio
+de cine y no de variedad por variedad — el gancho abre, el conflicto se cuenta a media
+distancia, el intento va sobre el hombro, el aprendizaje es un plano corto, el final
+vuelve a abrir. Y el propósito de cada beat tiene que decir **qué se ve distinto**, no
+solo qué pasa por dentro.
 
 ---
 

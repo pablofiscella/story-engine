@@ -16,6 +16,7 @@ punto: mejor una escena un poco más corta que un audio que se corta a la mitad.
 
 from __future__ import annotations
 
+import logging
 import re
 
 from engine.core.enums import StoryStatus
@@ -23,8 +24,11 @@ from engine.core.exceptions import ProviderError
 from engine.core.interfaces import TextProvider
 from engine.core.models.scene import Scene
 from engine.core.models.story import Story
+from engine.core.retry import con_reintentos
 from engine.prompts import image as image_prompts
 from engine.prompts import narration as prompts
+
+logger = logging.getLogger(__name__)
 
 #: Cuántas veces se le pide que acorte antes de recortar nosotros. Dos alcanzan: si
 #: con el número exacto de sobrante no entra, no va a entrar nunca.
@@ -97,7 +101,18 @@ class StoryWriter:
 
         texto = ""
         for intento in range(MAX_REINTENTOS + 1):
-            crudo = await self._provider.generate_text(pedido, system=sistema, temperature=0.8)
+            # Dos reintentos distintos, que no hay que confundir: este es por si el
+            # proveedor se cae (un 500, un rate limit); el del bucle de afuera es
+            # porque el texto no entró en los segundos de la escena.
+            crudo = await con_reintentos(
+                lambda p=pedido: self._provider.generate_text(
+                    p, system=sistema, temperature=0.8
+                ),
+                al_reintentar=lambda n, e: logger.warning(
+                    "Escena %s: el proveedor de texto falló (%s). Reintento %s.",
+                    plan.index, e, n,
+                ),
+            )
             texto = _limpiar(crudo)
             if not texto:
                 raise ProviderError(f"El escritor devolvió texto vacío en la escena {plan.index}.")

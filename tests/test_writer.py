@@ -131,22 +131,29 @@ async def test_texto_vacio_falla_claro(
         await motor.generate(**_kwargs(tema_dinos, estilo_3d, dino, tuca))
 
 
-async def test_falla_transitoria_sube_como_tal(
+async def test_falla_transitoria_se_reintenta_y_recien_ahi_sube(
     tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
 ) -> None:
-    """Reintentable: el que llama decide si vuelve a intentar."""
-    motor = StoryEngine(text_provider=ProviderQueCae())
+    """Un 5xx es transitorio: se insiste. Si igual no se recupera, sube como tal
+    para que el que llama sepa que puede volver a intentar más tarde."""
+    from engine.core.retry import INTENTOS
+
+    provider = ProviderQueCae()
+    motor = StoryEngine(text_provider=provider)
     with pytest.raises(ProviderUnavailableError):
         await motor.generate(**_kwargs(tema_dinos, estilo_3d, dino, tuca))
+    assert len(provider.llamadas) == INTENTOS
 
 
 async def test_rechazo_de_contenido_no_se_confunde_con_caida(
     tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
 ) -> None:
     """Reintentar contra un filtro de contenido quema cuota sin ninguna chance."""
-    motor = StoryEngine(text_provider=ProviderQueCae(refused=True))
+    provider = ProviderQueCae(refused=True)
+    motor = StoryEngine(text_provider=provider)
     with pytest.raises(ProviderRefusedError):
         await motor.generate(**_kwargs(tema_dinos, estilo_3d, dino, tuca))
+    assert len(provider.llamadas) == 1  # ni un intento de más
 
 
 async def test_escribir_sin_plan_no_se_puede(historia) -> None:

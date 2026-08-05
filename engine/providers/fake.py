@@ -57,8 +57,12 @@ class ProviderQueCae:
 
     def __init__(self, *, refused: bool = False) -> None:
         self.refused = refused
+        #: Cuántas veces se le pidió. Sirve para verificar que se reintentó —o que
+        #: NO se reintentó, cuando el rechazo es de contenido.
+        self.llamadas: list[str] = []
 
     async def generate_text(self, prompt: str, **kwargs: object) -> str:
+        self.llamadas.append(prompt)
         if self.refused:
             raise ProviderRefusedError("El contenido fue rechazado por el filtro del proveedor.")
         raise ProviderUnavailableError("503 del proveedor.")
