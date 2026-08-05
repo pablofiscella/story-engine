@@ -17,12 +17,21 @@ def test_sin_key_no_arranca() -> None:
         ElevenLabsProvider("")
 
 
-def test_la_voz_por_defecto_es_la_de_la_linea() -> None:
-    """Valeria narra los audiolibros, las actividades y los videos de venta desde el
-    25-jul-2026. Que el motor nuevo use otra haría que el mismo personaje suene
-    distinto según qué producto lo cuente."""
-    assert VOZ_POR_DEFECTO == "9oPKasc15pfAbMr7N6Gs"
+def test_la_voz_por_defecto_es_la_que_pablo_eligio_escuchando() -> None:
+    """Lizy, elegida el 5-ago-2026 comparando cuatro configuraciones del MISMO cuento.
+    Difiere de Valeria —la de los audiolibros— a propósito: son productos distintos y
+    se eligió por separado, escuchando."""
+    assert VOZ_POR_DEFECTO == "rrErIO88ehxTnspOjKvf"
     assert ElevenLabsProvider("k")._voz == VOZ_POR_DEFECTO
+
+
+def test_la_estabilidad_es_la_de_cuento_no_la_de_lectura() -> None:
+    """Baja de fábrica: le da permiso al modelo para emocionarse. Alta suena
+    consistente pero plana, que es lo que Pablo escuchó y rechazó."""
+    from engine.providers.elevenlabs import ESTABILIDAD_CUENTO
+
+    assert ESTABILIDAD_CUENTO == 0.3
+    assert ElevenLabsProvider("k")._stability == ESTABILIDAD_CUENTO
 
 
 def test_v3_actua_las_etiquetas_y_v2_las_lee_en_voz_alta() -> None:

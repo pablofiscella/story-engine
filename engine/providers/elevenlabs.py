@@ -36,10 +36,21 @@ _TTS = "https://api.elevenlabs.io/v1/text-to-speech"
 #: Códigos que valen un reintento: el problema es del otro lado y es pasajero.
 _TRANSITORIOS = frozenset({408, 429, 500, 502, 503, 504})
 
-#: Voz por defecto: Valeria. Es la de toda la línea de Casatridimensional desde el
-#: 25-jul-2026 — audiolibros, actividades y videos de venta. Que el motor nuevo use
-#: otra voz haría que un mismo personaje suene distinto según qué producto lo cuente.
-VOZ_POR_DEFECTO = "9oPKasc15pfAbMr7N6Gs"
+#: Voz por defecto: **Lizy**. La eligió Pablo el 5-ago-2026 escuchando el mismo
+#: cuento narrado en cuatro configuraciones (Valeria con estabilidad 0.5 y 0.3,
+#: Malena y Lizy), todas con la misma dirección de cuentacuentos.
+#:
+#: **Difiere a propósito de la línea de Casatridimensional**, que usa Valeria desde
+#: el 25-jul-2026 para audiolibros y actividades. No es un descuido: son productos
+#: distintos. Un audiolibro se escucha entero y de a ratos; un short tiene tres
+#: segundos para enganchar. Se eligió por separado y escuchando.
+VOZ_POR_DEFECTO = "rrErIO88ehxTnspOjKvf"
+
+#: Estabilidad baja: le da permiso al modelo para emocionarse — sube el tono en las
+#: partes divertidas y lo baja en las tristes. Es la perilla de la receta de cuento
+#: infantil, y la que Pablo eligió al comparar. Más alta suena más consistente pero
+#: más plana, que es exactamente lo que había que arreglar.
+ESTABILIDAD_CUENTO = 0.3
 
 #: Modelos y si entienden las etiquetas de emoción entre corchetes.
 _ETIQUETAS_SOPORTADAS: dict[str, bool] = {
@@ -87,7 +98,7 @@ class ElevenLabsProvider:
         *,
         model: str = "eleven_v3",
         default_voice_id: str = VOZ_POR_DEFECTO,
-        stability: float = 0.5,
+        stability: float = ESTABILIDAD_CUENTO,
         similarity: float = 0.8,
         style: float = 0.0,
         timeout: int = 120,
