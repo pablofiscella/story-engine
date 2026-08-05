@@ -69,6 +69,8 @@ def system_prompt(*, language: Language, age_range: AgeRange, value_moral: str) 
         "- Nunca inventes personajes: usá únicamente los que te nombran.\n"
         "- Respetá el límite de palabras. Es un límite de tiempo real: si te pasás, "
         "el audio no entra en la escena.\n"
+        "- NO escribas diálogo entrecomillado. Contá lo que el personaje dice, no lo "
+        "pongas entre comillas.\n"
         "- Nada de emojis ni de asteriscos."
     )
 

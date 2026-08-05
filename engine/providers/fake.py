@@ -8,7 +8,9 @@ que se pase de largo, que devuelva vacío, que falle.
 
 from __future__ import annotations
 
+import io
 import re
+import wave
 
 from engine.core.exceptions import ProviderRefusedError, ProviderUnavailableError
 
@@ -111,3 +113,47 @@ class FakeImageProvider:
         )
         # imagen distinta por llamada, para poder seguirle el rastro a las anclas
         return self.PNG + str(len(self.llamadas)).encode()
+
+
+class FakeVoiceProvider:
+    """Devuelve un WAV real, con la duración que le correspondería a ese texto.
+
+    No es un archivo cualquiera: dura lo que tardaría en decirse a `palabras_por_s`.
+    Eso permite probar de verdad el guardián de duración —que una escena se pase, que
+    la suma no cierre— sin gastar un peso en TTS y sin depender de la velocidad real
+    de un proveedor, que cambia según la voz.
+
+    `palabras_por_s` es el parámetro que importa: bajándolo se simula una voz lenta,
+    que es el caso que rompe el timing del video.
+    """
+
+    def __init__(self, *, palabras_por_s: float = 2.5) -> None:
+        self.palabras_por_s = palabras_por_s
+        self.llamadas: list[dict] = []
+
+    async def synthesize(
+        self,
+        text: str,
+        *,
+        voice_id: str | None = None,
+        speed: float = 1.0,
+        audio_format: str = "wav",
+    ) -> bytes:
+        self.llamadas.append({"text": text, "voice_id": voice_id, "speed": speed})
+        segundos = max(0.1, len(text.split()) / (self.palabras_por_s * speed))
+        return _wav_silencioso(segundos)
+
+
+def _wav_silencioso(segundos: float, *, fps: int = 22050) -> bytes:
+    """Un WAV mono válido de `segundos` de silencio.
+
+    Se arma con `wave` de la stdlib para que sea un archivo de verdad: si el motor
+    lo mide mal, el test falla acá y no en producción.
+    """
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(fps)
+        w.writeframes(b"\x00\x00" * int(fps * segundos))
+    return buf.getvalue()

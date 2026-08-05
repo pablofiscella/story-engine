@@ -218,3 +218,15 @@ class AspectRatio(StrEnum):
     SQUARE = "1:1"
     PORTRAIT = "4:5"
     PRINT_A4 = "210:297"
+
+
+class AudioKind(StrEnum):
+    """Qué es cada pista de audio de una escena.
+
+    Se separan porque no las dice la misma voz: la narración la lee el narrador de la
+    historia y el diálogo lo dice el personaje, con SU voz. Mezclarlas obligaría al
+    render a adivinar quién habla.
+    """
+
+    NARRATION = "narracion"
+    DIALOGUE = "dialogo"

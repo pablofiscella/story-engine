@@ -25,6 +25,7 @@ from engine.core.constants import (
 )
 from engine.core.enums import CameraMovement, Emotion, MusicMood, NarrativeBeat, ShotType
 from engine.core.exceptions import InvalidDurationError
+from engine.core.models.audio import AudioTrack
 from engine.core.models.base import EngineModel, Slug
 from engine.core.models.plan import ScenePlan
 
@@ -116,6 +117,13 @@ class Scene(EngineModel):
             "no la IA — es dirección de arte, no redacción."
         ),
     )
+    audio: list[AudioTrack] = Field(
+        default_factory=list,
+        description=(
+            "Las pistas de audio de la escena, en el orden en que suenan. Vacía hasta "
+            "que corre el narrador."
+        ),
+    )
     image_prompt: str = Field(default="", description="Prompt final para ilustrar la escena.")
     image_path: str = Field(
         default="",
@@ -162,8 +170,22 @@ class Scene(EngineModel):
 
     @property
     def estimated_speech_duration_s(self) -> float:
-        """Cuánto tardaría en decirse. Sirve para ajustar el timing antes de renderizar."""
+        """Cuánto tardaría en decirse, ESTIMADO. Sirve antes de que exista el audio."""
         return round(self.word_count / WORDS_PER_SECOND, 2)
+
+    @property
+    def audio_duration_s(self) -> float:
+        """Cuánto dura la escena de verdad, medido del audio ya generado.
+
+        Cero mientras no se narró. El render tiene que usar ésta y no `duration_s`:
+        la del plan es una intención, ésta es un hecho.
+        """
+        return round(sum(t.duration_s for t in self.audio), 3)
+
+    @property
+    def real_duration_s(self) -> float:
+        """La duración que vale para el render: la del audio si existe, si no la del plan."""
+        return self.audio_duration_s or self.duration_s
 
     @classmethod
     def from_plan(cls, plan: ScenePlan, *, narration: str, **extra: object) -> Scene:

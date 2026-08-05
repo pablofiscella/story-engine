@@ -1,5 +1,6 @@
 """Modelos del dominio."""
 
+from engine.core.models.audio import AudioTrack
 from engine.core.models.base import EngineModel, Slug
 from engine.core.models.character import Appearance, Character, Voice
 from engine.core.models.metadata import StoryMetadata
@@ -12,6 +13,7 @@ from engine.core.models.theme import Palette, Theme
 
 __all__ = [
     "Appearance",
+    "AudioTrack",
     "CameraDirection",
     "Character",
     "DialogueLine",
