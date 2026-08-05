@@ -83,9 +83,13 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         },
         purposes={
             NarrativeBeat.HOOK: "Presentar a {protagonista} feliz porque consiguió {objeto}",
-            NarrativeBeat.PROBLEM: "{companero} quiere jugar con {objeto} y {protagonista} se niega",
+            NarrativeBeat.PROBLEM: (
+                "{companero} quiere jugar con {objeto} y {protagonista} se niega"
+            ),
             NarrativeBeat.ATTEMPT: "{protagonista} intenta disfrutar {objeto} solo",
-            NarrativeBeat.FAILURE: "Jugar solo con {objeto} resulta aburrido: {protagonista} se queda sin nadie",
+            NarrativeBeat.FAILURE: (
+                "Jugar solo con {objeto} resulta aburrido: {protagonista} se queda sin nadie"
+            ),
             NarrativeBeat.LESSON: (
                 "{protagonista} entiende que con {companero} sería más divertido "
                 "y le ofrece {objeto}"
