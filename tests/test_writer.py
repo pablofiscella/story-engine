@@ -247,3 +247,10 @@ def test_recortar_no_toca_lo_que_ya_entra() -> None:
 def test_el_subtitulo_corta_en_la_primera_frase_si_es_largo() -> None:
     largo = "Frase uno bien cortita. " + "palabra " * 30
     assert _subtitulo(largo) == "Frase uno bien cortita."
+
+
+def test_el_recorte_no_deja_la_frase_colgada() -> None:
+    """El bug: una narración salió "...juegan con la pelota de colores en el." —
+    cortada justo en una preposición, que no cierra nada."""
+    texto = "Dino y Rexo juegan felices con la pelota de colores en el claro del bosque"
+    assert _recortar(texto, 12) == "Dino y Rexo juegan felices con la pelota de colores."

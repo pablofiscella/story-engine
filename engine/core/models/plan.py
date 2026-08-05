@@ -52,6 +52,23 @@ class ScenePlan(EngineModel):
         min_length=1, description="Quiénes aparecen. Al menos uno: nadie habla solo al vacío."
     )
     emotion: Emotion = Field(description="Emoción dominante. Guía tono, cara y música.")
+    imagined_character_ids: list[Slug] = Field(
+        default_factory=list,
+        description=(
+            "Personajes que aparecen en la escena SIN estar físicamente: en una "
+            "burbuja de pensamiento, un recuerdo, un dibujo. Van aparte de "
+            "`character_ids` porque el prompt tiene que describirlos igual —si no, el "
+            "modelo los inventa— pero sin contarlos como presentes en la escena."
+        ),
+    )
+    visual_note: str = Field(
+        default="",
+        description=(
+            "Recurso visual para esta escena, si el beat lo pide: una burbuja de "
+            "pensamiento, un objeto en primer plano. Dirección de arte decidida por "
+            "el motor."
+        ),
+    )
 
 
 class StoryPlan(EngineModel):

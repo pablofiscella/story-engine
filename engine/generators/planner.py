@@ -96,6 +96,17 @@ class StoryPlanner:
                     location=lugar,
                     character_ids=self._elenco_de(perfil, beat, protagonist, companion),
                     emotion=perfil.emotions[beat],
+                    visual_note=(nota := self._nota_visual(
+                        perfil, beat, protagonist, companion, objeto
+                    )),
+                    imagined_character_ids=(
+                        [companion.id]
+                        if companion is not None
+                        and companion.name in nota
+                        and companion.id
+                        not in self._elenco_de(perfil, beat, protagonist, companion)
+                        else []
+                    ),
                 )
             )
         return StoryPlan(target_duration_s=duration_s, scenes=escenas)
@@ -177,6 +188,30 @@ class StoryPlanner:
         if not perfil.needs_prop:
             return ""
         return theme.props[0] if theme.props else "un juguete nuevo"
+
+    def _nota_visual(
+        self,
+        perfil: ValueProfile,
+        beat: NarrativeBeat,
+        protagonist: Character,
+        companion: Character | None,
+        objeto: str,
+    ) -> str:
+        """Dirección de arte de la escena, si el beat la pide.
+
+        Es del MOTOR y no del escritor: una burbuja de pensamiento es una decisión
+        de puesta en escena, no de redacción. Y si la decidiera la IA, el prompt de
+        imagen —que se compone del plan— no se enteraría.
+        """
+        plantilla = perfil.visual_notes.get(beat)
+        if not plantilla:
+            return ""
+        if companion is None:
+            plantilla = plantilla.replace("{companero}", "un amigo")
+            return plantilla.format(protagonista=protagonist.name, objeto=objeto)
+        return plantilla.format(
+            protagonista=protagonist.name, companero=companion.name, objeto=objeto
+        )
 
     def _elenco_de(
         self,

@@ -155,6 +155,14 @@ def _limpiar(texto: str) -> str:
     return " ".join(t.split())
 
 
+#: Palabras que no pueden quedar al final de una frase cortada: no cierran nada y
+#: dejan el texto colgado ("...juegan con la pelota en el.").
+_COLGANTES = frozenset({
+    "el", "la", "los", "las", "un", "una", "unos", "unas", "de", "del", "en", "con",
+    "por", "para", "sin", "sobre", "a", "al", "y", "e", "o", "u", "que", "su", "sus",
+    "mi", "tu", "lo", "se", "muy", "más", "pero",
+})
+
 #: Qué tan atrás puede estar el último punto para que valga la pena cortar ahí.
 #: Terminar en una frase completa suena mucho mejor que truncar en el medio, así que
 #: se acepta perder hasta un 60% del texto con tal de cerrar bien.
@@ -170,7 +178,12 @@ def _recortar(texto: str, tope: int) -> str:
     corte = max(corto.rfind("."), corto.rfind("!"), corto.rfind("?"))
     if corte >= len(corto) * _CORTE_MINIMO:  # cerrar en frase, si no queda un pedacito
         return corto[: corte + 1]
-    return corto.rstrip(",;: ") + "."
+    # Sin punto donde cortar: al menos que no termine colgado en "en el." — se sueltan
+    # las palabras de función finales, que no cierran nada.
+    palabras_cortas = corto.split()
+    while palabras_cortas and palabras_cortas[-1].lower().strip(",;:") in _COLGANTES:
+        palabras_cortas.pop()
+    return " ".join(palabras_cortas).rstrip(",;: ") + "."
 
 
 def _subtitulo(texto: str, largo: int = 90) -> str:

@@ -93,6 +93,18 @@ class Scene(EngineModel):
             "solo las pinta."
         ),
     )
+    imagined_character_ids: list[Slug] = Field(
+        default_factory=list,
+        description="Personajes en burbuja de pensamiento o recuerdo: no están presentes.",
+    )
+    visual_note: str = Field(
+        default="",
+        description=(
+            "Recurso visual concreto para esta escena: 'burbuja de pensamiento donde "
+            "se imagina jugando con su amigo'. Lo decide el MOTOR (viene del plan), "
+            "no la IA — es dirección de arte, no redacción."
+        ),
+    )
     image_prompt: str = Field(default="", description="Prompt final para ilustrar la escena.")
     image_path: str = Field(
         default="",
@@ -149,6 +161,8 @@ class Scene(EngineModel):
             location=plan.location,
             character_ids=list(plan.character_ids),
             emotion=plan.emotion,
+            visual_note=plan.visual_note,
+            imagined_character_ids=list(plan.imagined_character_ids),
             narration=narration,
             **extra,  # type: ignore[arg-type]
         )

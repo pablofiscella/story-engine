@@ -105,7 +105,11 @@ class Story(EngineModel):
         conocidos = {sc.character.id for sc in self.characters}
 
         for escena in self.scenes:
-            desconocidos = set(escena.character_ids) - conocidos
+            # los imaginados cuentan igual: si no están declarados, el prompt no los
+            # describe y el modelo los inventa (el Rexo violeta de la burbuja).
+            desconocidos = (
+                set(escena.character_ids) | set(escena.imagined_character_ids)
+            ) - conocidos
             if desconocidos:
                 raise UnknownCharacterError(
                     f"La escena {escena.index} usa personajes que no están en el elenco: "

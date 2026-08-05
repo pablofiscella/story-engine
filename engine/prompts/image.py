@@ -2,16 +2,24 @@
 
 Decisión deliberada: el modelo de texto no redacta los prompts de imagen. Los arma
 el motor, ensamblando piezas fijas — el estilo, la descripción canónica de cada
-personaje, el lugar, la emoción.
+personaje, el lugar y la emoción.
 
 Por qué. Si el prompt de cada escena lo escribe una IA, cada escena describe al
 protagonista con sus propias palabras: "un dinosaurio verde", "un dino simpático",
-"el pequeño reptil". El generador de imágenes recibe tres descripciones distintas y
-dibuja tres personajes distintos. Es el bug clásico de los cuentos ilustrados por
-IA — el pijama que cambia de color entre la página 2 y la 3.
+"el pequeño reptil". El generador recibe tres descripciones distintas y dibuja tres
+personajes distintos.
 
-Componiéndolo, la descripción del personaje es byte por byte la misma en las diez
-escenas. La consistencia deja de depender de la suerte.
+REGLAS DURAS (las tres salieron de mirar un cuento ilustrado real que salió mal):
+
+1. **Elenco cerrado.** Se nombra a TODOS los que aparecen y se prohíbe cualquier
+   otro. Sin esto, la escena final decía "los dos juegan juntos" describiendo a uno
+   solo, y el modelo completó el elenco con un dinosaurio del fondo de la referencia.
+2. **Continuidad de escenario.** El lugar, la hora y el clima son los mismos en toda
+   la historia. La emoción se muestra en la CARA y la POSTURA, nunca cambiando el
+   clima: una escena triste no nubla el cielo si el cuento no dice que se nubló.
+3. **La imagen ilustra lo que se narra.** Manda el texto de la escena, no la orden
+   interna del motor. "Rexo quiere jugar y Dino se niega" se dibujó como Rexo
+   sacándole la pelota, cuando la narración decía que solo la miraba.
 """
 
 from __future__ import annotations
@@ -34,6 +42,7 @@ _ENCUADRE: dict[str, str] = {
 _NEGATIVO_BASE = (
     "texto, letras, palabras, marca de agua, logo, firma, "
     "manos deformes, dedos de más, rostros deformes, "
+    "personajes de más, animales de fondo con cara o actitud de personaje, "
     "contenido perturbador, violencia, personajes de marcas registradas"
 )
 
@@ -52,26 +61,50 @@ def compose(
     """
     bloques: list[str] = [style.prompt_fragment()]
 
-    # Personajes: descripción canónica + cómo se les ve la cara en esta emoción.
-    for cid in scene.character_ids:
-        p = characters.get(cid)
-        if p is None:
-            continue
+    # --- Regla 1: elenco cerrado ---------------------------------------------
+    presentes = [characters[c] for c in scene.character_ids if c in characters]
+    nombres = " y ".join(p.name for p in presentes)
+    bloques.append(
+        f"EN LA ESCENA HAY EXACTAMENTE {len(presentes)} "
+        f"personaje{'s' if len(presentes) != 1 else ''}: {nombres}. "
+        "No agregues ningún otro personaje ni criatura con protagonismo"
+    )
+    for p in presentes:
         bloques.append(
             f"{p.name}: {p.appearance.prompt_fragment()} {p.expression_for(scene.emotion)}"
         )
 
-    bloques.append(f"Escena: {scene.purpose}")
+    # Los imaginados (burbuja de pensamiento, recuerdo) NO cuentan como presentes,
+    # pero SÍ hay que describirlos: nombrarlos sin describirlos es lo que hizo que el
+    # Rexo de la burbuja saliera violeta en vez de azul.
+    imaginados = [characters[c] for c in scene.imagined_character_ids if c in characters]
+    for p in imaginados:
+        bloques.append(
+            f"{p.name} (solo dentro de la burbuja de pensamiento, no en la escena real): "
+            f"{p.appearance.prompt_fragment()}"
+        )
+
+    # --- Regla 3: manda lo que se narra --------------------------------------
+    bloques.append(f"Qué está pasando: {scene.narration or scene.purpose}")
+    if scene.visual_note:
+        bloques.append(scene.visual_note)
+
+    # --- Regla 2: continuidad de escenario -----------------------------------
     bloques.append(f"Lugar: {scene.location}, ambientado en {theme.name.lower()}")
+    bloques.append(
+        "MISMO escenario, MISMA hora del día y MISMO clima que el resto de la "
+        "historia: día soleado y despejado. La emoción se muestra SOLO en la cara y "
+        "la postura del personaje, nunca en el clima ni en la luz del cielo"
+    )
+    bloques.append(_actitud(scene.emotion))
     bloques.append(_ENCUADRE.get(scene.camera.shot.value, scene.camera.shot.value))
-    bloques.append(_clima(scene.emotion))
     bloques.append(
         f"paleta del tema: {theme.palette.primary}, {theme.palette.secondary}, "
         f"{theme.palette.accent}"
     )
-    # Aprendido de ilustrar cuentos con IA: si la referencia de estilo es una hoja de
-    # personajes sobre fondo blanco, el modelo copia ese vacío y los personajes quedan
-    # flotando. Hay que pedir el escenario de forma explícita, siempre.
+    # Si la referencia de estilo es una hoja de personajes sobre fondo blanco, el
+    # modelo copia ese vacío y los personajes quedan flotando. Hay que pedir el
+    # escenario de forma explícita, siempre.
     bloques.append(
         "escena COMPLETA: con piso y fondo del lugar, los personajes apoyados en el "
         "suelo, nunca flotando sobre fondo liso"
@@ -92,19 +125,22 @@ def negative(style: Style) -> str:
     return ", ".join(partes)
 
 
-def _clima(emotion: Emotion) -> str:
-    """La emoción, traducida a luz y atmósfera.
+def _actitud(emotion: Emotion) -> str:
+    """La emoción, traducida a CARA y CUERPO — nunca a clima.
 
-    El generador de imágenes no entiende "frustración" como dirección de arte; sí
-    entiende "luz apagada, cielo gris".
+    Antes esto devolvía luz y atmósfera ("cielo algo gris" para la frustración) y el
+    cuento se nublaba en el medio sin que la historia lo dijera. La emoción de un
+    personaje no cambia el tiempo.
     """
     return {
-        Emotion.CURIOSITY: "luz clara, atmósfera de descubrimiento",
-        Emotion.JOY: "luz cálida y brillante, colores vivos",
-        Emotion.SADNESS: "luz suave y apagada, tonos fríos",
-        Emotion.FEAR: "sombras largas, luz baja, sin llegar a dar miedo",
-        Emotion.SURPRISE: "luz que entra de golpe, contraste alto",
-        Emotion.FRUSTRATION: "luz plana, cielo algo gris",
-        Emotion.CALM: "luz difusa de atardecer, todo en calma",
-        Emotion.PRIDE: "contraluz dorado, el personaje destacado",
+        Emotion.CURIOSITY: (
+            "expresión de curiosidad, cejas levantadas, cuerpo inclinado hacia adelante"
+        ),
+        Emotion.JOY: "sonrisa grande, ojos brillantes, postura saltarina",
+        Emotion.SADNESS: "cejas caídas, mirada baja, hombros hundidos",
+        Emotion.FEAR: "ojos muy abiertos, cuerpo encogido, un paso hacia atrás",
+        Emotion.SURPRISE: "boca abierta, ojos redondos, cuerpo erguido de golpe",
+        Emotion.FRUSTRATION: "ceño fruncido, brazos cruzados, boca torcida",
+        Emotion.CALM: "párpados relajados, sonrisa suave, postura tranquila",
+        Emotion.PRIDE: "pecho inflado, mentón alto, sonrisa amplia",
     }[emotion]

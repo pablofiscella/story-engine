@@ -116,7 +116,11 @@ class SceneIllustrator:
         refs: list[bytes] = []
         if estilo_ref:
             refs.append(estilo_ref)
-        refs += [anclas[c] for c in escena.character_ids if c in anclas]
+        # también los imaginados: si Rexo aparece en una burbuja, necesita su ancla
+        # igual que si estuviera parado en la escena.
+        for cid in list(escena.character_ids) + list(escena.imagined_character_ids):
+            if cid in anclas and anclas[cid] not in refs:
+                refs.append(anclas[cid])
 
         prompt = escena.image_prompt or ""
         if not prompt:
