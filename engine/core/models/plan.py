@@ -51,7 +51,20 @@ class ScenePlan(EngineModel):
     character_ids: list[Slug] = Field(
         min_length=1, description="Quiénes aparecen. Al menos uno: nadie habla solo al vacío."
     )
-    emotion: Emotion = Field(description="Emoción dominante. Guía tono, cara y música.")
+    emotion: Emotion = Field(
+        description="El TONO de la escena. Guía la música y, por defecto, a cada personaje."
+    )
+    character_emotions: dict[Slug, Emotion] = Field(
+        default_factory=dict,
+        description=(
+            "Qué siente CADA personaje, cuando difiere del tono de la escena. El que "
+            "no figura acá siente `emotion`. "
+            "Existe porque una escena tiene dos lados: en el problema de 'compartir' "
+            "el protagonista está enojado y el compañero solo quiere jugar. Con una "
+            "sola emoción por escena, el ilustrador les ponía a los dos la misma cara "
+            "de enojo y los mismos brazos cruzados."
+        ),
+    )
     imagined_character_ids: list[Slug] = Field(
         default_factory=list,
         description=(
@@ -69,6 +82,21 @@ class ScenePlan(EngineModel):
             "el motor."
         ),
     )
+
+    @model_validator(mode="after")
+    def _validar_emociones(self) -> ScenePlan:
+        """Nadie puede sentir algo si no está en la escena, ni siquiera imaginado."""
+        conocidos = set(self.character_ids) | set(self.imagined_character_ids)
+        if sueltos := set(self.character_emotions) - conocidos:
+            raise InvalidArcError(
+                f"Escena {self.index}: se le asigna emoción a {sorted(sueltos)}, que no "
+                f"aparece{'n' if len(sueltos) > 1 else ''} en la escena."
+            )
+        return self
+
+    def emotion_for(self, character_id: str) -> Emotion:
+        """Qué siente este personaje acá. Si no se dijo, el tono de la escena."""
+        return self.character_emotions.get(character_id, self.emotion)
 
 
 class StoryPlan(EngineModel):

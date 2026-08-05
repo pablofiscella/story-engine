@@ -108,7 +108,9 @@ class Story(EngineModel):
             # los imaginados cuentan igual: si no están declarados, el prompt no los
             # describe y el modelo los inventa (el Rexo violeta de la burbuja).
             desconocidos = (
-                set(escena.character_ids) | set(escena.imagined_character_ids)
+                set(escena.character_ids)
+                | set(escena.imagined_character_ids)
+                | set(escena.character_emotions)
             ) - conocidos
             if desconocidos:
                 raise UnknownCharacterError(

@@ -24,7 +24,7 @@ from engine.core.constants import (
     MIN_SCENES,
     SCENE_PACING_S,
 )
-from engine.core.enums import AgeRange, EducationalValue, NarrativeBeat
+from engine.core.enums import AgeRange, EducationalValue, Emotion, NarrativeBeat
 from engine.core.exceptions import DomainError
 from engine.core.models.character import Character
 from engine.core.models.plan import ScenePlan, StoryPlan
@@ -79,6 +79,15 @@ class StoryPlanner:
         for i, (beat, dur, lugar) in enumerate(zip(beats, duraciones, lugares, strict=True)):
             repeticion = vistos.get(beat, 0)
             vistos[beat] = repeticion + 1
+            elenco = self._elenco_de(perfil, beat, protagonist, companion)
+            nota = self._nota_visual(perfil, beat, protagonist, companion, objeto)
+            # El compañero nombrado en la nota visual pero ausente de la escena está
+            # siendo imaginado (una burbuja de pensamiento, un recuerdo).
+            imaginados = (
+                [companion.id]
+                if companion is not None and companion.name in nota and companion.id not in elenco
+                else []
+            )
             escenas.append(
                 ScenePlan(
                     index=i,
@@ -94,19 +103,13 @@ class StoryPlanner:
                     ),
                     duration_s=dur,
                     location=lugar,
-                    character_ids=self._elenco_de(perfil, beat, protagonist, companion),
+                    character_ids=elenco,
                     emotion=perfil.emotions[beat],
-                    visual_note=(nota := self._nota_visual(
-                        perfil, beat, protagonist, companion, objeto
-                    )),
-                    imagined_character_ids=(
-                        [companion.id]
-                        if companion is not None
-                        and companion.name in nota
-                        and companion.id
-                        not in self._elenco_de(perfil, beat, protagonist, companion)
-                        else []
+                    character_emotions=self._emociones_de(
+                        perfil, beat, companion, elenco=elenco, imaginados=imaginados
                     ),
+                    visual_note=nota,
+                    imagined_character_ids=imaginados,
                 )
             )
         return StoryPlan(target_duration_s=duration_s, scenes=escenas)
@@ -230,6 +233,32 @@ class StoryPlanner:
         if companion is not None and "{companero}" in perfil.purposes[beat]:
             ids.append(companion.id)
         return ids
+
+    def _emociones_de(
+        self,
+        perfil: ValueProfile,
+        beat: NarrativeBeat,
+        companion: Character | None,
+        *,
+        elenco: list[str],
+        imaginados: list[str],
+    ) -> dict[str, Emotion]:
+        """Qué siente cada uno. Solo se anota al que NO siente el tono de la escena.
+
+        El protagonista queda fuera del diccionario a propósito: su emoción ES el tono
+        de la escena, y repetirla acá crearía dos fuentes de verdad para lo mismo.
+        """
+        if companion is None:
+            return {}
+        emociones: dict[str, Emotion] = {}
+        if companion.id in elenco:
+            emociones[companion.id] = perfil.companion_emotions[beat]
+        if companion.id in imaginados:
+            # Lo imaginado es lo que el protagonista se está perdiendo, así que en la
+            # burbuja siempre está contento. Es lo que hace que la escena se lea: acá
+            # triste, allá adentro alegre.
+            emociones[companion.id] = Emotion.JOY
+        return emociones
 
     def _redactar_proposito(
         self,

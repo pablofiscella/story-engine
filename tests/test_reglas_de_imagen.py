@@ -195,3 +195,85 @@ async def test_el_ilustrador_pasa_el_ancla_del_imaginado(
     idx = next(e.index for e in story.scenes if e.beat is NarrativeBeat.FAILURE)
     # en esa escena hay 1 presente pero 2 anclas: la de Dino y la de Rexo imaginado
     assert len(prov.llamadas[idx]["refs"]) >= 2
+
+
+# --- Regla 5: cada uno con su cara -----------------------------------------------
+
+
+async def test_el_que_no_comparte_y_el_que_mira_no_ponen_la_misma_cara(
+    tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """El bug: en la escena del problema, Dino y Rexo salieron con el MISMO ceño
+    fruncido y los MISMOS brazos cruzados. El enojado era Dino; Rexo solo quería
+    jugar. La emoción era una sola por escena y se aplicaba igual a todos."""
+    from engine.core.enums import Emotion
+
+    story = await _historia(tema_dinos, estilo_3d, dino, tuca)
+    problema = next(e for e in story.scenes if e.beat is NarrativeBeat.PROBLEM)
+
+    assert problema.emotion_for(dino.id) is Emotion.FRUSTRATION
+    assert problema.emotion_for(tuca.id) is Emotion.CURIOSITY
+    # y el prompt le da a cada uno SU gesto, no dos veces el mismo
+    assert "brazos cruzados" in problema.image_prompt
+    assert "cuerpo inclinado hacia adelante" in problema.image_prompt
+    assert problema.image_prompt.count("brazos cruzados") == 1
+
+
+async def test_el_protagonista_no_se_repite_en_el_diccionario(
+    tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """Su emoción ES el tono de la escena. Anotarla otra vez sería una segunda
+    fuente de verdad para lo mismo."""
+    story = await _historia(tema_dinos, estilo_3d, dino, tuca)
+    for escena in story.scenes:
+        assert dino.id not in escena.character_emotions
+        assert escena.emotion_for(dino.id) is escena.emotion
+
+
+async def test_el_rexo_de_la_burbuja_esta_contento(
+    tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """Lo imaginado es lo que se está perdiendo: acá triste, allá adentro alegre.
+    Si el imaginado heredara el tono de la escena, la burbuja saldría triste y la
+    escena no se leería."""
+    from engine.core.enums import Emotion
+
+    story = await _historia(tema_dinos, estilo_3d, dino, tuca)
+    error = next(e for e in story.scenes if e.beat is NarrativeBeat.FAILURE)
+
+    assert error.emotion is Emotion.SADNESS
+    assert error.emotion_for(tuca.id) is Emotion.JOY
+    assert "hombros hundidos" in error.image_prompt  # Dino, presente
+    assert "sonrisa grande" in error.image_prompt  # Rexo, imaginado
+
+
+def test_todos_los_valores_saben_que_siente_el_companero() -> None:
+    """Agregar un valor nuevo sin su curva del compañero deja a los dos personajes
+    con la misma cara. Que rompa acá y no en la imagen 40."""
+    from engine.core.enums import NarrativeBeat as NB
+
+    for valor, perfil in PROFILES.items():
+        faltan = [b.value for b in NB if b not in perfil.companion_emotions]
+        assert not faltan, f"{valor.value} no dice qué siente el compañero en {faltan}"
+
+
+def test_nadie_siente_algo_si_no_esta_en_la_escena() -> None:
+    from engine.core.enums import Emotion
+    from engine.core.exceptions import InvalidArcError
+    from engine.core.models.plan import ScenePlan
+
+    with pytest.raises(InvalidArcError, match="fantasma"):
+        ScenePlan(
+            index=0, beat=NarrativeBeat.HOOK, purpose="presentar a alguien",
+            duration_s=5.0, location="el bosque", character_ids=["dino"],
+            emotion=Emotion.JOY, character_emotions={"fantasma": Emotion.FEAR},
+        )
+
+
+def test_la_expresion_propia_del_personaje_le_gana_al_gesto_generico(dino: Character) -> None:
+    """`expressions` es el override: un dino que cuando se frustra infla los cachetes."""
+    from engine.core.enums import Emotion
+
+    propio = dino.model_copy(update={"expressions": {Emotion.FRUSTRATION: "infla los cachetes"}})
+    assert propio.expression_for(Emotion.FRUSTRATION, "ceño fruncido") == "infla los cachetes"
+    assert propio.expression_for(Emotion.JOY, "sonrisa grande") == "sonrisa grande"

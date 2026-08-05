@@ -20,6 +20,11 @@ REGLAS DURAS (las tres salieron de mirar un cuento ilustrado real que salió mal
 3. **La imagen ilustra lo que se narra.** Manda el texto de la escena, no la orden
    interna del motor. "Rexo quiere jugar y Dino se niega" se dibujó como Rexo
    sacándole la pelota, cuando la narración decía que solo la miraba.
+4. **Nombrado es descrito.** Un personaje que se menciona sin describir lo inventa el
+   modelo: el Rexo de la burbuja de pensamiento salió violeta en vez de azul.
+5. **Cada uno con su cara.** La emoción se pide por PERSONAJE, no por escena. Con una
+   sola emoción por escena, el que no comparte y el que se queda afuera salían con la
+   misma cara de enojo y los mismos brazos cruzados.
 """
 
 from __future__ import annotations
@@ -69,9 +74,14 @@ def compose(
         f"personaje{'s' if len(presentes) != 1 else ''}: {nombres}. "
         "No agregues ningún otro personaje ni criatura con protagonismo"
     )
+    # Cada uno con SU emoción: en el problema de "compartir" el protagonista está
+    # enojado y el compañero solo quiere jugar. Cuando la emoción era una sola por
+    # escena, salían los dos con la misma cara de enojo y los mismos brazos cruzados.
     for p in presentes:
+        emo = scene.emotion_for(p.id)
         bloques.append(
-            f"{p.name}: {p.appearance.prompt_fragment()} {p.expression_for(scene.emotion)}"
+            f"{p.name}: {p.appearance.prompt_fragment()} "
+            f"{p.expression_for(emo, _actitud(emo))}"
         )
 
     # Los imaginados (burbuja de pensamiento, recuerdo) NO cuentan como presentes,
@@ -81,7 +91,8 @@ def compose(
     for p in imaginados:
         bloques.append(
             f"{p.name} (solo dentro de la burbuja de pensamiento, no en la escena real): "
-            f"{p.appearance.prompt_fragment()}"
+            f"{p.appearance.prompt_fragment()} "
+            f"{p.expression_for(emo := scene.emotion_for(p.id), _actitud(emo))}"
         )
 
     # --- Regla 3: manda lo que se narra --------------------------------------
@@ -96,7 +107,6 @@ def compose(
         "historia: día soleado y despejado. La emoción se muestra SOLO en la cara y "
         "la postura del personaje, nunca en el clima ni en la luz del cielo"
     )
-    bloques.append(_actitud(scene.emotion))
     bloques.append(_ENCUADRE.get(scene.camera.shot.value, scene.camera.shot.value))
     bloques.append(
         f"paleta del tema: {theme.palette.primary}, {theme.palette.secondary}, "

@@ -78,7 +78,11 @@ class Scene(EngineModel):
     duration_s: float = Field(ge=MIN_SCENE_DURATION_S, le=MAX_SCENE_DURATION_S)
     location: str = Field(min_length=2)
     character_ids: list[Slug] = Field(min_length=1)
-    emotion: Emotion
+    emotion: Emotion = Field(description="El tono de la escena: música y default de cara.")
+    character_emotions: dict[Slug, Emotion] = Field(
+        default_factory=dict,
+        description="Lo que siente cada uno, cuando no es el tono general. Viene del plan.",
+    )
 
     # --- lo escribió la IA ---
     narration: str = Field(min_length=1, description="Lo que dice el narrador.")
@@ -126,6 +130,14 @@ class Scene(EngineModel):
             )
         return self
 
+    def emotion_for(self, character_id: str) -> Emotion:
+        """Qué siente este personaje acá. Si no se dijo, el tono de la escena.
+
+        Lo usa el prompt de imagen para darle a cada uno SU cara: el que no comparte
+        y el que se queda afuera no ponen la misma.
+        """
+        return self.character_emotions.get(character_id, self.emotion)
+
     @property
     def word_count(self) -> int:
         """Palabras que se DICEN: narración + diálogo hablado.
@@ -161,6 +173,7 @@ class Scene(EngineModel):
             location=plan.location,
             character_ids=list(plan.character_ids),
             emotion=plan.emotion,
+            character_emotions=dict(plan.character_emotions),
             visual_note=plan.visual_note,
             imagined_character_ids=list(plan.imagined_character_ids),
             narration=narration,

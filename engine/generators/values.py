@@ -37,8 +37,18 @@ class ValueProfile:
     question: str
     #: Instrucción para el escritor en cada beat.
     purposes: dict[NarrativeBeat, str]
-    #: Emoción dominante en cada beat. La sobreescribe el planificador si hace falta.
+    #: Qué siente el PROTAGONISTA en cada beat. Es también el tono de la escena.
     emotions: dict[NarrativeBeat, Emotion]
+    #: Qué siente el COMPAÑERO en cada beat, que casi nunca es lo mismo.
+    #:
+    #: Salió de mirar una ilustración donde Dino y Rexo tenían la misma cara de enojo
+    #: y los mismos brazos cruzados, cuando el enojado era Dino y Rexo solo quería
+    #: jugar. La emoción era una sola por escena y se le aplicaba igual a todos.
+    #:
+    #: El compañero es el otro lado del conflicto, así que su curva es distinta por
+    #: valor: en `compartir` es el que se queda afuera, en `amistad` es el que ya está
+    #: jugando contento, en `empatía` es el que está mal desde el principio.
+    companion_emotions: dict[NarrativeBeat, Emotion]
     #: Si el conflicto necesita un OBJETO concreto (compartir necesita algo que dar),
     #: qué tipo de objeto es. El motor elige uno del tema y lo mete en los propósitos,
     #: para que el texto Y el prompt de imagen hablen de la misma cosa.
@@ -66,6 +76,37 @@ def _emociones_base() -> dict[NarrativeBeat, Emotion]:
         NarrativeBeat.FAILURE: Emotion.SADNESS,
         NarrativeBeat.LESSON: Emotion.SURPRISE,
         NarrativeBeat.ENDING: Emotion.JOY,
+    }
+
+
+def _emociones_companero() -> dict[NarrativeBeat, Emotion]:
+    """Curva del que está del otro lado: pide, lo dejan afuera, y termina incluido.
+
+    La clave está en el PROBLEMA: `CURIOSITY` es "cuerpo inclinado hacia adelante,
+    cejas levantadas" — o sea, querer. Es lo que hace que el compañero mire el objeto
+    en vez de compartir el enojo del protagonista.
+    """
+    return {
+        NarrativeBeat.HOOK: Emotion.CURIOSITY,
+        NarrativeBeat.PROBLEM: Emotion.CURIOSITY,
+        NarrativeBeat.ATTEMPT: Emotion.SADNESS,
+        NarrativeBeat.FAILURE: Emotion.SADNESS,
+        NarrativeBeat.LESSON: Emotion.SURPRISE,
+        NarrativeBeat.ENDING: Emotion.JOY,
+    }
+
+
+def _companero_que_acompana() -> dict[NarrativeBeat, Emotion]:
+    """Cuando el compañero no sufre el conflicto sino que sostiene al protagonista.
+
+    Vale para paciencia, coraje y perseverancia: el otro está tranquilo mientras el
+    protagonista se pelea con algo que es suyo.
+    """
+    return {
+        **_emociones_companero(),
+        NarrativeBeat.PROBLEM: Emotion.CALM,
+        NarrativeBeat.ATTEMPT: Emotion.CALM,
+        NarrativeBeat.FAILURE: Emotion.CALM,
     }
 
 
@@ -110,6 +151,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
             ),
         },
         emotions=_emociones_base(),
+        companion_emotions=_emociones_companero(),
     ),
     EducationalValue.FRIENDSHIP: ValueProfile(
         value=EducationalValue.FRIENDSHIP,
@@ -127,6 +169,15 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
             NarrativeBeat.ENDING: "{protagonista} y {companero} juegan juntos como viejos amigos",
         },
         emotions={**_emociones_base(), NarrativeBeat.PROBLEM: Emotion.FEAR},
+        # Acá el compañero es el que YA está jugando contento: no sufre nada, y
+        # esa es justamente la distancia que el protagonista tiene que cruzar.
+        companion_emotions={
+            **_emociones_companero(),
+            NarrativeBeat.HOOK: Emotion.JOY,
+            NarrativeBeat.PROBLEM: Emotion.JOY,
+            NarrativeBeat.ATTEMPT: Emotion.JOY,
+            NarrativeBeat.FAILURE: Emotion.CALM,
+        },
     ),
     EducationalValue.RESPECT: ValueProfile(
         value=EducationalValue.RESPECT,
@@ -147,6 +198,11 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
             ),
         },
         emotions=_emociones_base(),
+        # El que sufre que le impongan: se frustra primero y se apaga después.
+        companion_emotions={
+            **_emociones_companero(),
+            NarrativeBeat.PROBLEM: Emotion.FRUSTRATION,
+        },
     ),
     EducationalValue.HONESTY: ValueProfile(
         value=EducationalValue.HONESTY,
@@ -179,6 +235,13 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
             NarrativeBeat.ENDING: "{protagonista} y {companero} lo arreglan juntos, aliviados",
         },
         emotions={**_emociones_base(), NarrativeBeat.ATTEMPT: Emotion.FEAR},
+        # El afectado por la mentira: no sabe nada al principio, se sorprende
+        # cuando aparece la verdad.
+        companion_emotions={
+            **_emociones_companero(),
+            NarrativeBeat.HOOK: Emotion.CALM,
+            NarrativeBeat.PROBLEM: Emotion.SURPRISE,
+        },
     ),
     EducationalValue.EMPATHY: ValueProfile(
         value=EducationalValue.EMPATHY,
@@ -196,6 +259,13 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
             NarrativeBeat.ENDING: "{companero} se anima, y juegan juntos de verdad",
         },
         emotions=_emociones_base(),
+        # Acá el compañero está mal DESDE EL PRINCIPIO, y que se note en su cara
+        # antes de que el protagonista lo registre es medio cuento contado.
+        companion_emotions={
+            **_emociones_companero(),
+            NarrativeBeat.HOOK: Emotion.SADNESS,
+            NarrativeBeat.PROBLEM: Emotion.SADNESS,
+        },
     ),
     EducationalValue.PATIENCE: ValueProfile(
         value=EducationalValue.PATIENCE,
@@ -214,6 +284,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
             ),
         },
         emotions={**_emociones_base(), NarrativeBeat.PROBLEM: Emotion.FRUSTRATION},
+        companion_emotions=_companero_que_acompana(),
     ),
     EducationalValue.COURAGE: ValueProfile(
         value=EducationalValue.COURAGE,
@@ -246,6 +317,8 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
             NarrativeBeat.ATTEMPT: Emotion.FEAR,
             NarrativeBeat.ENDING: Emotion.PRIDE,
         },
+        # El que acompaña sin miedo: su calma es lo que contrasta con el susto.
+        companion_emotions=_companero_que_acompana(),
     ),
     EducationalValue.PERSEVERANCE: ValueProfile(
         value=EducationalValue.PERSEVERANCE,
@@ -281,6 +354,8 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
             NarrativeBeat.FAILURE: Emotion.FRUSTRATION,
             NarrativeBeat.ENDING: Emotion.PRIDE,
         },
+        # El que alienta desde afuera y festeja al final.
+        companion_emotions=_companero_que_acompana(),
     ),
 }
 
