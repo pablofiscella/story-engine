@@ -55,6 +55,15 @@ class Theme(EngineModel):
         default_factory=list,
         description="Lugares donde pueden pasar las escenas: 'el claro del bosque'.",
     )
+    props: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Objetos concretos del mundo alrededor de los cuales puede girar el "
+            "conflicto: 'una piedra brillante', 'un huevo pintado'. Los elige el "
+            "MOTOR, no la IA — si el escritor inventa el objeto, el prompt de imagen "
+            "no se entera y la ilustración muestra al personaje feliz con nada."
+        ),
+    )
     character_ids: list[Slug] = Field(
         default_factory=list,
         description="Elenco habitual del tema (ids de `assets/characters/`).",

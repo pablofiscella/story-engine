@@ -15,7 +15,7 @@ Sumar un valor nuevo = agregar su perfil acá y su entrada en el enum. Son las d
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from engine.core.enums import EducationalValue, Emotion, NarrativeBeat
 
@@ -39,6 +39,14 @@ class ValueProfile:
     purposes: dict[NarrativeBeat, str]
     #: Emoción dominante en cada beat. La sobreescribe el planificador si hace falta.
     emotions: dict[NarrativeBeat, Emotion]
+    #: Si el conflicto necesita un OBJETO concreto (compartir necesita algo que dar),
+    #: qué tipo de objeto es. El motor elige uno del tema y lo mete en los propósitos,
+    #: para que el texto Y el prompt de imagen hablen de la misma cosa.
+    needs_prop: bool = False
+    #: Variantes para cuando un beat se repite en historias largas. Sin esto, dos
+    #: escenas del mismo beat salen casi idénticas — pasó de verdad ("el secreto la
+    #: aplastaba" / "el secreto la envolvía" en dos escenas seguidas).
+    escalations: dict[NarrativeBeat, tuple[str, ...]] = field(default_factory=dict)
 
 
 def _emociones_base() -> dict[NarrativeBeat, Emotion]:
@@ -62,16 +70,27 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         conflict="{protagonista} tiene algo que quiere solo para sí",
         moral="Compartir nos hace más felices y fortalece la amistad.",
         question="¿Y vos, qué compartís con tus amigos?",
+        needs_prop=True,
+        escalations={
+            NarrativeBeat.ATTEMPT: (
+                "{protagonista} juega con {objeto} dándole la espalda a los demás",
+                "{protagonista} se lleva {objeto} a un rincón para que nadie lo vea",
+            ),
+            NarrativeBeat.FAILURE: (
+                "Jugar solo con {objeto} se vuelve aburrido enseguida",
+                "{protagonista} mira a los demás jugar juntos y se siente afuera",
+            ),
+        },
         purposes={
-            NarrativeBeat.HOOK: "Presentar a {protagonista} feliz con algo que acaba de conseguir",
-            NarrativeBeat.PROBLEM: "{companero} quiere jugar con eso y {protagonista} se niega",
-            NarrativeBeat.ATTEMPT: "{protagonista} intenta disfrutarlo solo",
-            NarrativeBeat.FAILURE: "Jugar solo resulta aburrido: {protagonista} se queda sin nadie",
+            NarrativeBeat.HOOK: "Presentar a {protagonista} feliz porque consiguió {objeto}",
+            NarrativeBeat.PROBLEM: "{companero} quiere jugar con {objeto} y {protagonista} se niega",
+            NarrativeBeat.ATTEMPT: "{protagonista} intenta disfrutar {objeto} solo",
+            NarrativeBeat.FAILURE: "Jugar solo con {objeto} resulta aburrido: {protagonista} se queda sin nadie",
             NarrativeBeat.LESSON: (
                 "{protagonista} entiende que con {companero} sería más divertido "
-                "y ofrece compartir"
+                "y le ofrece {objeto}"
             ),
-            NarrativeBeat.ENDING: "Los dos juegan juntos, mucho más felices que antes",
+            NarrativeBeat.ENDING: "Los dos juegan juntos con {objeto}, mucho más felices",
         },
         emotions=_emociones_base(),
     ),
@@ -115,9 +134,20 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         conflict="{protagonista} rompe o pierde algo y no quiere admitirlo",
         moral="Decir la verdad cuesta un ratito; la mentira pesa mucho más.",
         question="¿Y vos, alguna vez dijiste la verdad aunque diera miedo?",
+        needs_prop=True,
+        escalations={
+            NarrativeBeat.ATTEMPT: (
+                "{protagonista} esconde los restos de {objeto} donde nadie los vea",
+                "{protagonista} disimula y cambia de tema cuando alguien menciona {objeto}",
+            ),
+            NarrativeBeat.FAILURE: (
+                "{protagonista} no puede dormir pensando en lo que hizo",
+                "Alguien pregunta por {objeto} y {protagonista} siente que se le nota",
+            ),
+        },
         purposes={
-            NarrativeBeat.HOOK: "Mostrar a {protagonista} jugando cerca de algo importante",
-            NarrativeBeat.PROBLEM: "Sin querer lo rompe, y nadie lo vio",
+            NarrativeBeat.HOOK: "Mostrar a {protagonista} jugando cerca de {objeto}",
+            NarrativeBeat.PROBLEM: "Sin querer rompe {objeto}, y nadie lo vio",
             NarrativeBeat.ATTEMPT: "{protagonista} lo esconde y hace como si nada",
             NarrativeBeat.FAILURE: "No puede disfrutar de nada: el secreto le pesa",
             NarrativeBeat.LESSON: "{protagonista} cuenta la verdad y descubre que lo entienden",
@@ -162,6 +192,16 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         conflict="{protagonista} tiene miedo de algo que quiere hacer",
         moral="Ser valiente no es no tener miedo: es animarse igual.",
         question="¿Y vos, a qué te animaste aunque tuvieras miedo?",
+        escalations={
+            NarrativeBeat.ATTEMPT: (
+                "{protagonista} se acerca unos pasos y se detiene",
+                "{protagonista} estira la mano pero la retira enseguida",
+            ),
+            NarrativeBeat.FAILURE: (
+                "{protagonista} se asusta y vuelve corriendo",
+                "{protagonista} se esconde y mira desde lejos, apenado",
+            ),
+        },
         purposes={
             NarrativeBeat.HOOK: "Mostrar a {protagonista} frente a algo nuevo y grande",
             NarrativeBeat.PROBLEM: "Le da miedo y prefiere quedarse atrás",
@@ -182,6 +222,16 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         conflict="a {protagonista} no le sale algo y quiere abandonar",
         moral="No salió todavía no es lo mismo que no puedo.",
         question="¿Y vos, qué aprendiste después de intentarlo muchas veces?",
+        escalations={
+            NarrativeBeat.ATTEMPT: (
+                "{protagonista} lo intenta otra vez, poniendo más fuerza",
+                "{protagonista} prueba una manera completamente distinta",
+            ),
+            NarrativeBeat.FAILURE: (
+                "Falla de nuevo, y esta vez le duele más",
+                "{protagonista} se sienta en el piso, sin ganas de seguir",
+            ),
+        },
         purposes={
             NarrativeBeat.HOOK: "Presentar a {protagonista} con muchas ganas de lograr algo",
             NarrativeBeat.PROBLEM: "Lo intenta y no le sale para nada",

@@ -72,6 +72,7 @@ class StoryPlanner:
         beats = self._distribuir_beats(cantidad)
         duraciones = self._repartir_duracion(duration_s, len(beats))
         lugares = self._elegir_lugares(theme, len(beats))
+        objeto = self._elegir_objeto(perfil, theme)
 
         vistos: dict[NarrativeBeat, int] = {}
         escenas = []
@@ -87,6 +88,7 @@ class StoryPlanner:
                         beat,
                         protagonist,
                         companion,
+                        objeto=objeto,
                         repeticion=repeticion,
                         total_del_beat=beats.count(beat),
                     ),
@@ -164,6 +166,18 @@ class StoryPlanner:
         return [lugares[i % len(lugares)] for i in range(cantidad)]
 
     # -------------------------------------------------------------------- contenido
+    def _elegir_objeto(self, perfil: ValueProfile, theme: Theme) -> str:
+        """El objeto concreto alrededor del cual gira el conflicto.
+
+        Lo elige el MOTOR y no el escritor. Si lo inventa la IA, el prompt de imagen
+        —que se compone del plan— no se entera, y la ilustración muestra al personaje
+        feliz con las manos vacías mientras el texto habla de una piedra brillante.
+        Pasó de verdad al probar con la API real.
+        """
+        if not perfil.needs_prop:
+            return ""
+        return theme.props[0] if theme.props else "un juguete nuevo"
+
     def _elenco_de(
         self,
         perfil: ValueProfile,
@@ -189,6 +203,7 @@ class StoryPlanner:
         protagonist: Character,
         companion: Character | None,
         *,
+        objeto: str = "",
         repeticion: int = 0,
         total_del_beat: int = 1,
     ) -> str:
@@ -202,13 +217,26 @@ class StoryPlanner:
         recibe una instrucción DISTINTA. Sin esto, el escritor recibía dos veces la
         misma orden y producía dos escenas idénticas.
         """
-        plantilla = perfil.purposes[beat]
-        if companion is None:
-            texto = _sin_companero(plantilla).format(protagonista=protagonist.name)
+        # Si el beat se repite y el valor tiene variantes, cada repetición recibe una
+        # instrucción REALMENTE distinta. La numeración sola no alcanzaba: con
+        # "Primero:"/"Después:" el modelo devolvía dos escenas casi calcadas.
+        variantes = perfil.escalations.get(beat, ())
+        if total_del_beat > 1 and repeticion < len(variantes):
+            plantilla = variantes[repeticion]
         else:
-            texto = plantilla.format(protagonista=protagonist.name, companero=companion.name)
+            plantilla = perfil.purposes[beat]
 
-        if total_del_beat > 1:
+        if companion is None:
+            plantilla = _sin_companero(plantilla)
+            texto = plantilla.format(protagonista=protagonist.name, objeto=objeto)
+        else:
+            texto = plantilla.format(
+                protagonista=protagonist.name, companero=companion.name, objeto=objeto
+            )
+
+        # Solo numerar si no hubo variante propia: ahí la repetición sigue siendo el
+        # mismo texto y al menos hay que señalar que es otro momento.
+        if total_del_beat > 1 and repeticion >= len(variantes):
             texto = f"{_ORDINAL.get(repeticion, f'{repeticion + 1}º')}: {texto}"
         return texto
 
@@ -230,11 +258,11 @@ def _ultimo_indice(arco: list[NarrativeBeat], beat: NarrativeBeat) -> int | None
 def _sin_companero(plantilla: str) -> str:
     """Reescribe una instrucción para que funcione sin segundo personaje."""
     reemplazos = {
-        "{companero} quiere jugar con eso y {protagonista} se niega": (
-            "{protagonista} tiene que decidir si lo comparte o lo guarda"
+        "{companero} quiere jugar con {objeto} y {protagonista} se niega": (
+            "{protagonista} tiene que decidir si comparte {objeto} o lo guarda"
         ),
-        "Los dos juegan juntos, mucho más felices que antes": (
-            "{protagonista} comparte y descubre que así es mucho más divertido"
+        "Los dos juegan juntos con {objeto}, mucho más felices": (
+            "{protagonista} comparte {objeto} y descubre que así es mucho más divertido"
         ),
         "{protagonista} y {companero} juegan juntos como viejos amigos": (
             "{protagonista} ya no está solo y juega contento"
