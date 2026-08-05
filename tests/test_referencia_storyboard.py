@@ -99,7 +99,7 @@ def _construir_short() -> Story:
         name="Dino",
         appearance=Appearance(
             species="dinosaurio bebé",
-            description="regordete y tierno, ojos enormes y expresivos, estilo 3D infantil",
+            description="regordete y tierno, ojos enormes y expresivos, cola corta",
             colors=["verde", "amarillo"],
             distinctive_features=["crestas naranjas en la espalda"],
         ),
@@ -111,7 +111,7 @@ def _construir_short() -> Story:
         name="Rexo",
         appearance=Appearance(
             species="dinosaurio bebé",
-            description="regordete y tierno, ojos enormes, estilo 3D infantil",
+            description="regordete y tierno, ojos enormes, cola corta",
             colors=["azul", "celeste"],
             distinctive_features=["crestas naranjas en la espalda"],
         ),

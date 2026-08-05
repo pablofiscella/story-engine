@@ -24,7 +24,12 @@ class Appearance(EngineModel):
     species: str = Field(description="Qué es: 'dinosaurio T-Rex', 'niña', 'robot'.")
     description: str = Field(
         min_length=10,
-        description="Descripción canónica y CONCRETA. Va literal a todos los prompts.",
+        description=(
+            "Descripción canónica y CONCRETA del CUERPO. Va literal a todos los prompts. "
+            "REGLA: describe cómo ES el personaje, nunca cómo se DIBUJA. Nada de "
+            "'estilo 3D' ni 'acuarela' acá — eso es `Style`, y si se cuela, el mismo "
+            "personaje pide 3D cuando la historia se está dibujando en palitos."
+        ),
     )
     colors: list[str] = Field(default_factory=list, description="Colores dominantes.")
     outfit: str | None = Field(default=None, description="Ropa/accesorios fijos.")
