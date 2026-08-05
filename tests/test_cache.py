@@ -82,8 +82,9 @@ async def test_tambien_ahorra_en_la_voz(
     await StoryNarrator(cache).narrate(story, tmp_path / "1")
     await StoryNarrator(cache).narrate(story, tmp_path / "2")
 
-    assert len(interno.llamadas) == len(story.scenes)  # la segunda vuelta fue gratis
-    assert cache.hits == len(story.scenes)
+    tomas = len(story.scenes) + 2  # las escenas + moraleja + pregunta de cierre
+    assert len(interno.llamadas) == tomas  # la segunda vuelta fue gratis
+    assert cache.hits == tomas
 
 
 async def test_dice_cuanto_ahorro(tmp_path) -> None:

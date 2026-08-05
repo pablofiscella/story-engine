@@ -90,12 +90,38 @@ class StoryNarrator:
                 escena.audio = await self._narrar_escena(escena, destino, personajes)
 
         await asyncio.gather(*(una(e) for e in story.scenes))
+        story.closing_audio = await self._narrar_cierre(story, destino)
 
         self._avisar_desvios(story)
         if story.status is not StoryStatus.NARRATED:
             story.advance_to(StoryStatus.NARRATED)
         story.metadata.touch()
         return story
+
+    async def _narrar_cierre(self, story: Story, destino: Path) -> list[AudioTrack]:
+        """La moraleja y la pregunta final.
+
+        No son parte del cuento: el cuento ya terminó. Son lo que se le dice a quien
+        mira, y la pregunta es lo que convierte a un espectador en un comentario.
+
+        Existían en el modelo desde el primer día y ningún módulo las usaba, así que
+        el video terminaba en la última palabra de la historia, en seco.
+        """
+        pistas: list[AudioTrack] = []
+        for n, texto in enumerate(t for t in (story.moral, story.closing_question) if t):
+            pistas.append(
+                await self._pista(
+                    texto,
+                    voz=self._voz,
+                    kind=AudioKind.NARRATION,
+                    character_id=None,
+                    ruta=destino / f"cierre_{n}.wav",
+                    # El cierre se dice más lento y más cálido que el cuento: es el
+                    # momento en que el narrador le habla al chico, no a la historia.
+                    entonacion=f"{prompts_voz.DIRECCION} {prompts_voz.APERTURA}",
+                )
+            )
+        return pistas
 
     # ------------------------------------------------------------------------
     async def _narrar_escena(self, escena: Scene, destino: Path, personajes) -> list[AudioTrack]:

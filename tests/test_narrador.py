@@ -55,7 +55,8 @@ async def test_narra_todas_las_escenas(
     assert story.status is StoryStatus.NARRATED
     assert all(e.audio for e in story.scenes)
     assert all(t.duration_s > 0 for e in story.scenes for t in e.audio)
-    assert len(list(tmp_path.glob("*.wav"))) == len(story.scenes)
+    # las seis escenas + la moraleja + la pregunta de cierre
+    assert len(list(tmp_path.glob("*.wav"))) == len(story.scenes) + 2
 
 
 async def test_la_duracion_se_MIDE_del_archivo(
@@ -317,3 +318,45 @@ def test_la_direccion_de_actuacion_va_en_toda_escena() -> None:
     assert DIRECCION in primera and DIRECCION in otra
     assert "[warmly] [slows down]" in primera  # la apertura, confirmada al oído
     assert "[sadly]" in otra
+
+
+
+# --- el cierre --------------------------------------------------------------------
+
+
+async def test_la_moraleja_y_la_pregunta_se_narran(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """Existían en el modelo desde el primer día y ningún módulo las usaba: el video
+    terminaba en la última palabra del cuento, en seco. Y la pregunta es lo que
+    convierte a un espectador en un comentario."""
+    story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
+    await StoryNarrator(FakeVoiceProvider()).narrate(story, tmp_path)
+
+    dichos = [t.text for t in story.closing_audio]
+    assert dichos == [story.moral, story.closing_question]
+    assert all(t.duration_s > 0 for t in story.closing_audio)
+
+
+async def test_el_cierre_se_dice_con_el_tono_de_la_apertura(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """Es el momento en que el narrador le habla al chico, no a la historia."""
+    from engine.prompts.voz import APERTURA
+
+    story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
+    prov = FakeVoiceProvider()
+    await StoryNarrator(prov).narrate(story, tmp_path)
+
+    del_cierre = [ll for ll in prov.llamadas if story.moral in ll["text"]]
+    assert del_cierre and APERTURA in del_cierre[0]["text"]
+
+
+async def test_una_historia_sin_moraleja_no_inventa_cierre(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
+    story.moral = ""
+    story.closing_question = ""
+    await StoryNarrator(FakeVoiceProvider()).narrate(story, tmp_path)
+    assert story.closing_audio == []

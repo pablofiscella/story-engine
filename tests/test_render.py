@@ -106,3 +106,59 @@ def test_el_volumen_se_normaliza_al_estandar_de_las_plataformas() -> None:
     from engine.render.video import LOUDNESS
 
     assert "I=-16" in LOUDNESS
+
+
+# --- el texto tiene que ENTRAR en el cuadro --------------------------------------
+
+
+def test_un_titulo_largo_se_parte_en_lineas() -> None:
+    """El primer short decía "no y la pelota de color": el título de 27 caracteres
+    se salía del cuadro por los dos lados porque el tamaño era fijo."""
+    from engine.render.video import _envolver
+
+    lineas = _envolver("Dino y la pelota de colores")
+    assert len(lineas) > 1
+    assert all(len(x) <= 20 for x in lineas)
+    assert " ".join(lineas) == "Dino y la pelota de colores"  # no se pierde nada
+
+
+def test_no_corta_palabras_al_medio() -> None:
+    from engine.render.video import _envolver
+
+    original = "¿Y vos, qué compartís con tus amigos?"
+    lineas = _envolver(original)
+    assert " ".join(lineas) == original
+    assert all(x == x.strip() for x in lineas)
+
+
+def test_una_palabra_mas_larga_que_la_linea_no_desaparece() -> None:
+    """Un nombre de tema largo no puede tragarse el título."""
+    from engine.render.video import _envolver
+
+    assert _envolver("supercalifragilisticoespialidoso") == [
+        "supercalifragilisticoespialidoso"
+    ]
+
+
+@sin_ffmpeg
+def test_el_texto_largo_usa_una_letra_mas_chica(tmp_path) -> None:
+    """Si el tamaño no baja con el largo, partir en líneas no alcanza."""
+    r = ShortRenderer()
+    corto = r._texto("Dino", tmp_path / "a.txt", y="0", tope=88)
+    largo = r._texto("Dino y la pelota de colores brillantes", tmp_path / "b.txt", y="0", tope=88)
+    assert int(corto.split("fontsize=")[1].split(":")[0]) == 88
+    assert int(largo.split("fontsize=")[1].split(":")[0]) < 88
+
+
+@sin_ffmpeg
+def test_el_texto_va_a_un_ARCHIVO_y_no_al_filtro(tmp_path) -> None:
+    """El texto de un cuento tiene comillas, dos puntos y signos de apertura, y cada
+    uno necesita su escape dentro de un filtro de ffmpeg. Con el texto en un archivo
+    no hay nada que escapar. El primer intento con `text=` salió "ino y la pelota
+    dencolore": el salto de línea se comió el espacio."""
+    destino = tmp_path / "t.txt"
+    filtro = ShortRenderer()._texto("Dino: el que no compartía", destino, y="0", tope=88)
+
+    assert f"textfile={destino}" in filtro
+    assert ":text=" not in filtro
+    assert destino.read_text(encoding="utf-8").replace("\n", " ") == "Dino: el que no compartía"

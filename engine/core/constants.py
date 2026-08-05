@@ -120,3 +120,22 @@ ALLOWED_TRANSITIONS: MappingProxyType[StoryStatus, frozenset[StoryStatus]] = Map
         ),
     }
 )
+
+
+# --- Ritmo del video ------------------------------------------------------------
+#: Silencio entre una escena y la siguiente.
+#:
+#: Sin esto las narraciones se pisan: la última palabra de una escena y la primera
+#: de la siguiente quedan pegadas, y el cuento suena apurado. Lo escuchó Pablo en el
+#: primer short: *"entre cada texto parece que se junta mucho el audio"*.
+PAUSA_ENTRE_ESCENAS_S = 0.45
+
+#: Aire después de la última palabra, antes de que termine el video.
+#:
+#: Un cuento que corta en seco en la última sílaba se siente roto aunque esté
+#: completo. También le da lugar al fundido.
+COLA_FINAL_S = 1.2
+
+#: Cuánto dura la placa de título del principio.
+#: Corta a propósito: en un short los primeros segundos deciden si se quedan.
+TITULO_S = 2.0
