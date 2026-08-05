@@ -74,3 +74,36 @@ class ProviderVacio:
 def _tope_del_prompt(prompt: str) -> int:
     m = re.search(r"M[ÁA]XIMO\s+(\d+)\s+palabras", prompt, re.IGNORECASE)
     return int(m.group(1)) if m else 12
+
+
+class FakeImageProvider:
+    """Devuelve un PNG mínimo válido y ANOTA con qué referencias se lo llamó.
+
+    Lo que importa testear del ilustrador no es la imagen (no la podemos evaluar en
+    un test) sino que cada escena reciba las referencias correctas. Por eso este
+    provider guarda las llamadas.
+    """
+
+    #: PNG de 1×1 transparente. Suficiente para que Pillow y el disco lo acepten.
+    PNG = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06"
+        b"\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05"
+        b"\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+
+    def __init__(self) -> None:
+        self.llamadas: list[dict] = []
+
+    async def generate_image(
+        self,
+        prompt: str,
+        *,
+        reference_images: list[bytes] | None = None,
+        width: int = 1024,
+        height: int = 1024,
+    ) -> bytes:
+        self.llamadas.append(
+            {"prompt": prompt, "refs": list(reference_images or []), "size": (width, height)}
+        )
+        # imagen distinta por llamada, para poder seguirle el rastro a las anclas
+        return self.PNG + str(len(self.llamadas)).encode()

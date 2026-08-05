@@ -94,6 +94,10 @@ class Scene(EngineModel):
         ),
     )
     image_prompt: str = Field(default="", description="Prompt final para ilustrar la escena.")
+    image_path: str = Field(
+        default="",
+        description="Ruta de la ilustración ya generada. Vacía hasta que corre el ilustrador.",
+    )
 
     # --- dirección (motor + defaults) ---
     camera: CameraDirection = Field(default_factory=CameraDirection)

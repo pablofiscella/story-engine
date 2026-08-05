@@ -20,6 +20,7 @@ from engine.core.exceptions import ProviderRefusedError, ProviderUnavailableErro
 
 _CHAT = "https://api.openai.com/v1/chat/completions"
 _IMAGES = "https://api.openai.com/v1/images/generations"
+_IMAGE_EDITS = "https://api.openai.com/v1/images/edits"
 
 #: Códigos que valen un reintento: el problema es del otro lado y es pasajero.
 _TRANSITORIOS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
@@ -33,7 +34,7 @@ class OpenAIProvider:
         api_key: str,
         *,
         text_model: str = "gpt-4o-mini",
-        image_model: str = "gpt-image-1",
+        image_model: str = "gpt-image-2",
         timeout: int = 90,
     ) -> None:
         if not api_key:
@@ -78,17 +79,25 @@ class OpenAIProvider:
         width: int = 1024,
         height: int = 1024,
     ) -> bytes:
-        # `reference_images` se ignora en este endpoint: la edición con referencias usa
-        # /images/edits, que es multipart. Queda para cuando enganchemos el ilustrador
-        # (Sprint 3), donde las referencias encadenadas son justamente el mecanismo que
-        # mantiene al personaje igual entre escenas.
-        cuerpo = {
-            "model": self._image_model,
-            "prompt": prompt,
-            "size": f"{width}x{height}",
-            "n": 1,
-        }
-        data = await self._post(_IMAGES, cuerpo)
+        """Con referencias usa /images/edits; sin ellas, /images/generations.
+
+        Son dos endpoints distintos porque hacen dos cosas distintas: generar de cero
+        acepta JSON, y editar a partir de imágenes exige multipart. Las referencias son
+        el mecanismo que mantiene al personaje igual entre escenas, así que este camino
+        es el normal, no el excepcional.
+        """
+        if reference_images:
+            data = await self._post_multipart(prompt, reference_images, width, height)
+        else:
+            data = await self._post(
+                _IMAGES,
+                {
+                    "model": self._image_model,
+                    "prompt": prompt,
+                    "size": f"{width}x{height}",
+                    "n": 1,
+                },
+            )
         try:
             item = data["data"][0]
         except (KeyError, IndexError) as e:
@@ -96,6 +105,41 @@ class OpenAIProvider:
         if "b64_json" in item:
             return base64.b64decode(item["b64_json"])
         raise ProviderUnavailableError("OpenAI no devolvió la imagen en base64.")
+
+    async def _post_multipart(
+        self, prompt: str, refs: list[bytes], width: int, height: int
+    ) -> dict:
+        from engine.providers.multipart import build
+
+        campos = {
+            "model": self._image_model,
+            "prompt": prompt,
+            "size": f"{width}x{height}",
+            "n": "1",
+        }
+        # `image[]` y no `image`: con varias referencias, repetir `image` devuelve
+        # 400 "Duplicate parameter". Verificado contra la API real.
+        archivos = [("image[]", f"ref{i}.png", raw) for i, raw in enumerate(refs)]
+        ctype, cuerpo = build(campos, archivos)
+        return await asyncio.to_thread(self._post_raw, _IMAGE_EDITS, cuerpo, ctype)
+
+    def _post_raw(self, url: str, cuerpo: bytes, content_type: str) -> dict:
+        req = urllib.request.Request(
+            url,
+            data=cuerpo,
+            method="POST",
+            headers={"Authorization": f"Bearer {self._key}", "Content-Type": content_type},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self._timeout) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            detalle = _detalle(e)
+            if e.code in _TRANSITORIOS:
+                raise ProviderUnavailableError(f"OpenAI {e.code}: {detalle}") from e
+            raise ProviderRefusedError(f"OpenAI {e.code}: {detalle}") from e
+        except (TimeoutError, urllib.error.URLError) as e:
+            raise ProviderUnavailableError(f"No se pudo llegar a OpenAI: {e}") from e
 
     # ------------------------------------------------------------------------
     async def _post(self, url: str, cuerpo: dict[str, object]) -> dict:

@@ -7,6 +7,6 @@ nueva — el motor no se entera.
 `fake` permite correr el pipeline entero en tests, sin gastar ni depender de la red.
 """
 
-from engine.providers.fake import FakeTextProvider
+from engine.providers.fake import FakeImageProvider, FakeTextProvider
 
-__all__ = ["FakeTextProvider"]
+__all__ = ["FakeImageProvider", "FakeTextProvider"]
