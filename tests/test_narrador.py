@@ -169,6 +169,33 @@ async def test_una_toma_cortada_no_pasa(
         await StoryNarrator(DevuelveLaMitad()).narrate(story, tmp_path)
 
 
+async def test_una_toma_cortada_se_pide_de_nuevo_sola(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """Frenar la producción entera por una toma mala es justo lo que no puede pasar
+    cuando esto corre solo. Y no alcanza con los reintentos por excepción: una toma
+    cortada llega con HTTP 200 y un WAV perfectamente válido."""
+    class FallaLaPrimera(FakeVoiceProvider):
+        """La primera toma vuelve con una palabra; el resto, enteras."""
+
+        def __init__(self):
+            super().__init__()
+            self.cortadas = 0
+
+        async def synthesize(self, text, **kw):
+            if self.cortadas == 0 and not self.llamadas:
+                self.cortadas += 1
+                return await super().synthesize("una", **kw)
+            return await super().synthesize(text, **kw)
+
+    prov = FallaLaPrimera()
+    story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
+    await StoryNarrator(prov).narrate(story, tmp_path)  # no explota
+
+    assert prov.cortadas == 1
+    assert all(t.duration_s > 0 for e in story.scenes for t in e.audio)
+
+
 async def test_una_voz_lenta_avisa_pero_no_frena(
     tmp_path, caplog, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
 ) -> None:
@@ -220,7 +247,9 @@ async def test_narrar_sin_proveedor_avisa_bien(
 )
 def test_limpia_lo_que_se_lee_mal_en_voz_alta(escrito: str, dicho: str) -> None:
     """Las comillas angulares las lee como ">>" — pasó en los audiolibros."""
-    assert para_decir(escrito) == dicho
+    from engine.generators.narrator import COLCHON_FINAL
+
+    assert para_decir(escrito) == dicho + COLCHON_FINAL
 
 
 @pytest.mark.parametrize(
@@ -237,7 +266,9 @@ def test_no_toca_lo_que_marca_el_RITMO(texto: str) -> None:
     exclamación le levantan el tono. Son la herramienta principal para que un cuento
     no suene a noticiero. Este código los borraba: aplanaba justo lo que hay que
     exagerar."""
-    assert para_decir(texto) == texto
+    from engine.generators.narrator import COLCHON_FINAL
+
+    assert para_decir(texto) == texto + COLCHON_FINAL
 
 
 async def test_el_subtitulo_conserva_la_puntuacion_linda(
@@ -360,3 +391,63 @@ async def test_una_historia_sin_moraleja_no_inventa_cierre(
     story.closing_question = ""
     await StoryNarrator(FakeVoiceProvider()).narrate(story, tmp_path)
     assert story.closing_audio == []
+
+
+async def test_marca_la_toma_que_habla_mas_rapido_que_el_resto(
+    tmp_path, caplog, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """Así se ve una toma cortada desde afuera: el archivo tiene casi todo el largo
+    de la frase —así que el piso absoluto no la agarra— pero le falta el final. Lo
+    escuchó Pablo: "dice pelotita de colore y es de colores, se corta antes". Esa
+    toma iba a 2.99 palabras por segundo y el resto de la historia a 2.38."""
+
+    class UnaSaleCorta(FakeVoiceProvider):
+        """A la quinta toma se le come el final: queda por encima del piso —así que
+        no se reintenta— pero por debajo de lo que dura decirla entera."""
+
+        async def synthesize(self, text, **kw):
+            import re
+
+            if len(self.llamadas) == 4:
+                dicho = re.sub(r"\[[^\]]*\]", "", text).split()
+                return await super().synthesize(" ".join(dicho[: int(len(dicho) * 0.7)]), **kw)
+            return await super().synthesize(text, **kw)
+
+    story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
+    with caplog.at_level("WARNING"):
+        await StoryNarrator(UnaSaleCorta()).narrate(story, tmp_path)
+
+    assert "puede haber salido cortada" in caplog.text.lower()
+
+
+async def test_una_historia_pareja_no_dispara_falsas_alarmas(
+    tmp_path, caplog, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """Si avisa de todo, no sirve para nada."""
+    story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
+    with caplog.at_level("WARNING"):
+        await StoryNarrator(FakeVoiceProvider()).narrate(story, tmp_path)
+    assert "cortada" not in caplog.text.lower()
+
+
+def test_el_texto_lleva_un_colchon_para_que_no_se_coma_el_final() -> None:
+    """ElevenLabs v3 trunca la última palabra, y siempre la misma: "pelotita de
+    colore" en vez de "colores". Medido con la frase exacta: 3,8s tal cual contra
+    5,3s con un punto extra. Un punto de más no se pronuncia."""
+    from engine.generators.narrator import COLCHON_FINAL
+
+    assert para_decir("Dino saltó.").endswith(COLCHON_FINAL)
+    assert "Dino saltó." in para_decir("Dino saltó.")
+
+
+async def test_el_colchon_no_ensucia_lo_que_queda_guardado(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """Es un truco para el proveedor, no parte del cuento: la pista guarda el texto
+    tal como se escribió."""
+    story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
+    await StoryNarrator(FakeVoiceProvider()).narrate(story, tmp_path)
+
+    for escena in story.scenes:
+        assert escena.audio[0].text == escena.narration
+        assert not escena.audio[0].text.endswith(" .")

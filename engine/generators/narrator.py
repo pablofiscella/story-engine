@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import statistics
 import wave
 from pathlib import Path
 
@@ -64,6 +65,19 @@ CONCURRENCIA = 3
 #: disparar la alarma. Lo que buscamos es la toma partida al medio, no la lenta.
 PISO_DE_TOMA = 0.5
 
+#: Cuántas veces se le pide de nuevo una toma que llegó cortada.
+#: Frenar la producción entera por una toma mala es justo lo que no puede pasar
+#: cuando esto corre solo, diez veces por día.
+INTENTOS_DE_TOMA = 3
+
+#: Cuánto puede una toma hablar más rápido que el resto de la historia antes de que
+#: sea sospechosa de estar cortada.
+#:
+#: El piso de arriba detecta el corte grosero —media frase—; esto detecta el que se
+#: come el final de la última palabra, que suena peor de lo que parece y que no baja
+#: la duración lo suficiente como para disparar el piso.
+DESVIO_SOSPECHOSO = 0.25
+
 
 class StoryNarrator:
     """Convierte una historia escrita en una historia narrada."""
@@ -92,6 +106,7 @@ class StoryNarrator:
         await asyncio.gather(*(una(e) for e in story.scenes))
         story.closing_audio = await self._narrar_cierre(story, destino)
 
+        self._avisar_tomas_apuradas(story)
         self._avisar_desvios(story)
         if story.status is not StoryStatus.NARRATED:
             story.advance_to(StoryStatus.NARRATED)
@@ -184,22 +199,38 @@ class StoryNarrator:
         # de actuación, no algo que se diga. Si el modelo no la entiende, el proveedor
         # la saca — acá no hay que acordarse.
         pedido = prompts_voz.con_entonacion(decible, entonacion)
-        audio = await con_reintentos(
-            lambda: self._provider.synthesize(
-                pedido,
-                voice_id=voz.provider_voice_id,
-                speed=voz.speed,
-                audio_format="wav",
-            ),
-            al_reintentar=lambda n, e: logger.warning(
-                "%s: el proveedor de voz falló (%s). Reintento %s.", ruta.name, e, n
-            ),
-        )
-        if not audio:
-            raise ProviderError(f"El proveedor de voz devolvió audio vacío para '{ruta.name}'.")
 
-        duracion = duracion_de_wav(audio)
-        _verificar_toma_entera(decible, duracion, ruta)
+        # Una toma cortada NO es un error del proveedor: devuelve 200 y un WAV válido,
+        # más corto. Por eso no alcanza con `con_reintentos`, que sólo reacciona a las
+        # excepciones. Se pide de nuevo hasta que llegue entera, porque frenar la
+        # producción por una toma mala es justo lo que no puede pasar cuando esto corre
+        # solo diez veces por día.
+        audio, duracion = b"", 0.0
+        for intento in range(1, INTENTOS_DE_TOMA + 1):
+            audio = await con_reintentos(
+                lambda: self._provider.synthesize(
+                    pedido,
+                    voice_id=voz.provider_voice_id,
+                    speed=voz.speed,
+                    audio_format="wav",
+                ),
+                al_reintentar=lambda n, e: logger.warning(
+                    "%s: el proveedor de voz falló (%s). Reintento %s.", ruta.name, e, n
+                ),
+            )
+            duracion = duracion_de_wav(audio) if audio else 0.0
+            if _toma_entera(decible, duracion):
+                break
+            logger.warning(
+                "%s: la toma llegó cortada (%.1fs). Se pide de nuevo (%s de %s).",
+                ruta.name, duracion, intento, INTENTOS_DE_TOMA,
+            )
+        else:
+            raise ProviderError(
+                f"La toma '{ruta.name}' llegó cortada {INTENTOS_DE_TOMA} veces seguidas: "
+                f"dura {duracion:.1f}s y para decir {len(decible.split())} palabras hacen "
+                f"falta unos {len(decible.split()) / WORDS_PER_SECOND:.1f}s."
+            )
 
         ruta.write_bytes(audio)
         return AudioTrack(
@@ -210,6 +241,36 @@ class StoryNarrator:
             duration_s=duracion,
             voice_id=voz.provider_voice_id or "",
         )
+
+    def _avisar_tomas_apuradas(self, story: Story) -> None:
+        """Marca la toma que dice sus palabras MÁS RÁPIDO que las demás.
+
+        Es cómo se ve una toma cortada desde afuera: el archivo tiene el largo de
+        casi toda la frase, así que el piso absoluto no la detecta, pero le falta el
+        final. Pablo lo escuchó: *"hay una parte que dice pelotita de colore y es de
+        colores, se corta antes"*. Esa toma iba a 2.99 palabras por segundo cuando el
+        resto de la historia iba a 2.38.
+
+        Se compara contra la MEDIANA de la propia historia y no contra una constante:
+        la velocidad depende de la voz, del modelo y de los ajustes, y lo que importa
+        no es cuán rápido habla sino que una toma se salga del resto.
+        """
+        tasas = [
+            (e.index, len(t.text.split()) / t.duration_s)
+            for e in story.scenes
+            for t in e.audio
+            if t.duration_s > 0
+        ]
+        if len(tasas) < 3:
+            return  # con dos tomas no hay "resto de la historia" contra qué comparar
+        mediana = statistics.median(v for _, v in tasas)
+        for indice, tasa in tasas:
+            if tasa > mediana * (1 + DESVIO_SOSPECHOSO):
+                logger.warning(
+                    "Escena %s: la narración va a %.2f palabras por segundo y el resto "
+                    "de la historia a %.2f. Puede haber salido cortada.",
+                    indice, tasa, mediana,
+                )
 
     def _avisar_desvios(self, story: Story) -> None:
         """Deja rastro de las escenas donde el audio no entra en lo planeado.
@@ -229,6 +290,17 @@ class StoryNarrator:
 
 
 # --------------------------------------------------------------------------- utils
+#: Lo que se le agrega al final de cada toma para que no se coma la última palabra.
+#:
+#: ElevenLabs v3 trunca el final, y no al azar: la misma frase se corta SIEMPRE.
+#: Lo escuchó Pablo — *"dice pelotita de colore y es de colores, se corta antes"*— y
+#: se midió con la frase exacta: 3,8s tal cual (cortada) contra **5,3s con un punto
+#: extra al final** (entera). Los puntos suspensivos dan lo mismo (5,1s).
+#:
+#: Un punto de más no se pronuncia, así que no cambia lo que se dice: solo le da al
+#: modelo el margen que necesita para terminar la palabra.
+COLCHON_FINAL = " ."
+
 #: Lo que hay que arreglar del texto ANTES de mandarlo a decir.
 #:
 #: El texto que se DICE no es el que se VE. Las comillas angulares las lee como
@@ -251,26 +323,23 @@ def para_decir(texto: str) -> str:
 
     Deliberadamente conservador: casi todo signo que un cuentacuentos usaría está
     ahí para marcar el ritmo, y limpiarlo de más deja la lectura plana.
+
+    Termina agregando `COLCHON_FINAL` — ver por qué ahí abajo.
     """
     limpio = texto
     for viejo, nuevo in _PARA_DECIR:
         limpio = limpio.replace(viejo, nuevo)
-    return " ".join(limpio.split()).replace(" ,", ",").replace(" .", ".")
+    return " ".join(limpio.split()).replace(" ,", ",").replace(" .", ".") + COLCHON_FINAL
 
 
-def _verificar_toma_entera(texto: str, duracion_s: float, ruta: Path) -> None:
-    """Rechaza una toma que llegó cortada.
+def _toma_entera(texto: str, duracion_s: float) -> bool:
+    """Si la toma trae todo el audio que debería.
 
     No alcanza con que el proveedor no falle: devolver medio audio es un WAV
-    perfectamente válido. Si nadie compara contra lo que debería durar, el corte se
-    descubre escuchando el producto terminado.
+    perfectamente válido, con HTTP 200. Si nadie compara contra lo que debería durar,
+    el corte se descubre escuchando el producto terminado.
     """
-    esperado = len(texto.split()) / WORDS_PER_SECOND
-    if duracion_s < esperado * PISO_DE_TOMA:
-        raise ProviderError(
-            f"La toma '{ruta.name}' dura {duracion_s:.1f}s y para decir {len(texto.split())} "
-            f"palabras hacen falta unos {esperado:.1f}s. Llegó cortada."
-        )
+    return duracion_s >= (len(texto.split()) / WORDS_PER_SECOND) * PISO_DE_TOMA
 
 
 def duracion_de_wav(audio: bytes) -> float:

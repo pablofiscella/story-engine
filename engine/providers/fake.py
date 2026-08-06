@@ -148,7 +148,10 @@ class FakeVoiceProvider:
         # Contarlas como palabras haría que el fake mintiera sobre la duración, que es
         # justo lo que este provider existe para simular bien.
         dicho = _ETIQUETA.sub("", text)
-        segundos = max(0.1, len(dicho.split()) / (self.palabras_por_s * speed))
+        # Sólo cuentan las palabras de verdad: la puntuación suelta —como el punto de
+        # colchón que se agrega al final— no se pronuncia.
+        palabras = [p for p in dicho.split() if any(c.isalnum() for c in p)]
+        segundos = max(0.1, len(palabras) / (self.palabras_por_s * speed))
         return _wav_silencioso(segundos)
 
 
