@@ -25,6 +25,20 @@ _IMAGE_EDITS = "https://api.openai.com/v1/images/edits"
 #: Códigos que valen un reintento: el problema es del otro lado y es pasajero.
 _TRANSITORIOS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
 
+#: Las calidades de imagen que acepta el modelo, de más barata a más cara.
+CALIDADES = ("low", "medium", "high")
+
+#: Con qué calidad se pide una imagen si nadie dice lo contrario.
+#:
+#: Es LA palanca del costo: un short son 6 imágenes, y a 3 shorts por día la cuenta del
+#: mes cambia de orden de magnitud según esto. Pablo, 5-ago-2026: *"a 1 dólar el short
+#: son 100 dólares al mes por 3 videos por día. Es inviable"*.
+#:
+#: Queda en `medium` a propósito: lo que se mira en un teléfono, en vertical y con
+#: fundidos de por medio, no es una lámina para imprimir. Subirlo a `high` es una
+#: decisión que hay que justificar mirando las dos, no el default.
+CALIDAD_POR_DEFECTO = "medium"
+
 
 class OpenAIProvider:
     """Texto e imagen contra la API de OpenAI."""
@@ -35,13 +49,17 @@ class OpenAIProvider:
         *,
         text_model: str = "gpt-4o-mini",
         image_model: str = "gpt-image-2",
+        image_quality: str = CALIDAD_POR_DEFECTO,
         timeout: int = 90,
     ) -> None:
         if not api_key:
             raise ValueError("Falta la API key de OpenAI.")
+        if image_quality not in CALIDADES:
+            raise ValueError(f"Calidad de imagen desconocida: {image_quality!r}. {CALIDADES}")
         self._key = api_key
         self._text_model = text_model
         self._image_model = image_model
+        self._image_quality = image_quality
         self._timeout = timeout
 
     @property
@@ -50,8 +68,11 @@ class OpenAIProvider:
 
         Sin esto, cambiar de modelo devolvería lo generado con el anterior como si
         fuera nuevo — el bug del caché de TTS que no llevaba la voz en la clave.
+
+        La calidad va acá por lo mismo: bajarla y recibir las imágenes caras de antes
+        haría creer que se abarató algo que no se abarató.
         """
-        return f"openai:{self._text_model}:{self._image_model}"
+        return f"openai:{self._text_model}:{self._image_model}:{self._image_quality}"
 
     async def generate_text(
         self,
@@ -104,6 +125,7 @@ class OpenAIProvider:
                     "model": self._image_model,
                     "prompt": prompt,
                     "size": f"{width}x{height}",
+                    "quality": self._image_quality,
                     "n": 1,
                 },
             )
@@ -124,6 +146,7 @@ class OpenAIProvider:
             "model": self._image_model,
             "prompt": prompt,
             "size": f"{width}x{height}",
+            "quality": self._image_quality,
             "n": "1",
         }
         # `image[]` y no `image`: con varias referencias, repetir `image` devuelve

@@ -215,3 +215,42 @@ def test_los_proveedores_reales_declaran_su_firma() -> None:
     assert ElevenLabsProvider("k", stability=0.5).cache_fingerprint != (
         ElevenLabsProvider("k", stability=0.75).cache_fingerprint
     )
+
+
+def test_bajar_la_calidad_no_devuelve_las_imagenes_caras_de_antes() -> None:
+    """La calidad es LA palanca del costo: 33 veces entre `low` y `high`. Si no
+    estuviera en la clave, bajarla devolvería lo caro ya generado y parecería que se
+    abarató algo que no se abarató — con la factura llegando igual el mes siguiente."""
+    from engine.providers.openai import OpenAIProvider
+
+    firmas = {OpenAIProvider("k", image_quality=q).cache_fingerprint
+              for q in ("low", "medium", "high")}
+    assert len(firmas) == 3
+
+
+async def test_la_calidad_pedida_VIAJA_en_el_pedido() -> None:
+    """Que el parámetro exista no sirve si no llega. El error que este test evita no
+    da ningún síntoma: las imágenes salen bien, el motor dice "low", y la factura
+    llega igual de cara a fin de mes."""
+    from engine.providers.openai import OpenAIProvider
+
+    prov = OpenAIProvider("k", image_quality="low")
+    enviado: dict = {}
+
+    async def _espia(url, cuerpo):
+        enviado.update(cuerpo)
+        return {"data": [{"b64_json": ""}]}
+
+    prov._post = _espia  # type: ignore[method-assign]
+    await prov.generate_image("una escena")
+
+    assert enviado["quality"] == "low"
+    assert enviado["size"] == "1024x1024"
+
+
+def test_una_calidad_inventada_no_pasa_en_silencio() -> None:
+    """Un typo acá se cobra: la API podría ignorarlo y cobrar el default caro."""
+    from engine.providers.openai import OpenAIProvider
+
+    with pytest.raises(ValueError, match="[Cc]alidad"):
+        OpenAIProvider("k", image_quality="alta")
