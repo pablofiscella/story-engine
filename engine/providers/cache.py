@@ -24,17 +24,40 @@ no miente.
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 
 from engine.core.interfaces import ImageProvider, VoiceProvider
+
+#: Se puede mover el caché de disco sin tocar código.
+VARIABLE_DE_ENTORNO = "STORY_ENGINE_CACHE"
+
+
+def directorio_por_defecto() -> Path:
+    """Dónde vive el caché cuando quien llama no dice otra cosa. **Nunca `/tmp`.**
+
+    El 5-ago-2026 el caché de un día entero de trabajo vivía en `/tmp`. Se reinició la
+    máquina y se lo llevó entero: las seis imágenes del cuento —ya pagadas— hubo que
+    volver a comprarlas, que es exactamente lo que este módulo existe para evitar.
+
+    Un caché en un directorio que el sistema borra solo no es un caché: es una demora.
+    """
+    return Path(os.environ.get(VARIABLE_DE_ENTORNO) or Path.home() / ".cache" / "story-engine")
 
 
 class _Base:
     """Lo común: dónde guarda, cómo cuenta y cómo se olvida de algo."""
 
-    def __init__(self, inner: object, cache_dir: str | Path, *, extension: str) -> None:
+    def __init__(
+        self,
+        inner: object,
+        cache_dir: str | Path | None = None,
+        *,
+        extension: str,
+        carpeta: str,
+    ) -> None:
         self._inner = inner
-        self._dir = Path(cache_dir)
+        self._dir = Path(cache_dir) if cache_dir is not None else directorio_por_defecto() / carpeta
         self._dir.mkdir(parents=True, exist_ok=True)
         self._ext = extension
         #: Para poder decir cuánto se ahorró, que si no es una promesa sin número.
@@ -65,8 +88,8 @@ class _Base:
 class CachedImageProvider(_Base):
     """Un `ImageProvider` que no vuelve a pagar una imagen que ya generó."""
 
-    def __init__(self, inner: ImageProvider, cache_dir: str | Path) -> None:
-        super().__init__(inner, cache_dir, extension=".png")
+    def __init__(self, inner: ImageProvider, cache_dir: str | Path | None = None) -> None:
+        super().__init__(inner, cache_dir, extension=".png", carpeta="imagenes")
 
     async def generate_image(
         self,
@@ -100,8 +123,8 @@ class CachedVoiceProvider(_Base):
     escena 4 pagaba de nuevo las seis narraciones.
     """
 
-    def __init__(self, inner: VoiceProvider, cache_dir: str | Path) -> None:
-        super().__init__(inner, cache_dir, extension=".wav")
+    def __init__(self, inner: VoiceProvider, cache_dir: str | Path | None = None) -> None:
+        super().__init__(inner, cache_dir, extension=".wav", carpeta="voz")
 
     async def synthesize(
         self,

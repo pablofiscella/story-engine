@@ -18,7 +18,12 @@ from engine.core.models import Character, Style, Theme
 from engine.engine import StoryEngine
 from engine.generators.illustrator import SceneIllustrator
 from engine.generators.narrator import StoryNarrator
-from engine.providers.cache import CachedImageProvider, CachedVoiceProvider
+from engine.providers.cache import (
+    VARIABLE_DE_ENTORNO,
+    CachedImageProvider,
+    CachedVoiceProvider,
+    directorio_por_defecto,
+)
 from engine.providers.fake import FakeImageProvider, FakeTextProvider, FakeVoiceProvider
 
 pytestmark = pytest.mark.anyio
@@ -145,6 +150,59 @@ async def test_otro_tamano_es_otra_imagen(tmp_path) -> None:
     await cache.generate_image("la escena", width=1024, height=1024)
 
     assert len(interno.llamadas) == 2
+
+
+# --- dónde vive ------------------------------------------------------------------
+
+
+def test_el_cache_NO_vive_en_tmp(monkeypatch) -> None:
+    """El 5-ago-2026 el caché estaba en `/tmp`, se reinició la máquina y se perdió
+    entero: las seis imágenes del cuento, ya pagadas, hubo que volver a comprarlas.
+
+    Un caché en un directorio que el sistema borra solo no es un caché: es una
+    demora. Este test existe para que a nadie se le ocurra volver a ponerlo ahí."""
+    monkeypatch.delenv(VARIABLE_DE_ENTORNO, raising=False)
+    destino = directorio_por_defecto()
+
+    assert not str(destino).startswith("/tmp")
+    assert not str(destino).startswith("/var/tmp")
+
+
+def test_se_puede_mover_de_disco_sin_tocar_codigo(monkeypatch, tmp_path) -> None:
+    """Las imágenes ocupan y el disco de la máquina es chico."""
+    monkeypatch.setenv(VARIABLE_DE_ENTORNO, str(tmp_path / "otro-disco"))
+    assert directorio_por_defecto() == tmp_path / "otro-disco"
+
+
+def test_la_voz_y_la_imagen_no_comparten_carpeta(monkeypatch, tmp_path) -> None:
+    """Se guardan por hash, así que no se pisarían igual — pero mezclar 300 wav con
+    300 png hace que mirar el caché a ojo no sirva para nada."""
+    monkeypatch.setenv(VARIABLE_DE_ENTORNO, str(tmp_path))
+    imagen = CachedImageProvider(FakeImageProvider())
+    voz = CachedVoiceProvider(FakeVoiceProvider())
+
+    assert imagen._dir != voz._dir
+    assert imagen._dir.parent == voz._dir.parent == tmp_path
+
+
+async def test_el_default_guarda_de_verdad(monkeypatch, tmp_path) -> None:
+    """Que exista un default no sirve si después no cachea: sin `cache_dir`, la
+    segunda llamada tiene que salir del disco igual que con uno explícito."""
+    monkeypatch.setenv(VARIABLE_DE_ENTORNO, str(tmp_path))
+    interno = FakeImageProvider()
+    cache = CachedImageProvider(interno)
+
+    await cache.generate_image("la escena")
+    await cache.generate_image("la escena")
+
+    assert len(interno.llamadas) == 1
+    assert cache.hits == 1
+
+
+def test_lo_que_pide_quien_llama_le_gana_al_default(monkeypatch, tmp_path) -> None:
+    """El default es una comodidad, no una imposición."""
+    monkeypatch.setenv(VARIABLE_DE_ENTORNO, str(tmp_path / "no-es-acá"))
+    assert CachedVoiceProvider(FakeVoiceProvider(), tmp_path / "acá")._dir == tmp_path / "acá"
 
 
 def test_los_proveedores_reales_declaran_su_firma() -> None:
