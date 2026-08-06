@@ -10,6 +10,7 @@ Casatridimensional, que usan el mismo proveedor. Están anotados uno por uno.
 
 from __future__ import annotations
 
+import pathlib
 import wave
 
 import pytest
@@ -216,7 +217,12 @@ async def test_la_tasa_real_se_puede_medir(
     constante con la que escribe el escritor no coincide con la voz. Esto permite
     ajustarla con un número medido en vez de con intuición."""
     story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
-    await StoryNarrator(FakeVoiceProvider(palabras_por_s=2.08)).narrate(story, tmp_path)
+    # Toma por escena: acá cada pista es exactamente su frase, así que la tasa se puede
+    # comparar contra la del proveedor. En la toma continua el corte reparte por
+    # caracteres del pedido —etiquetas incluidas— y el fake no simula eso.
+    await StoryNarrator(FakeVoiceProvider(palabras_por_s=2.08)).narrate(
+        story, tmp_path, de_una_toma=False
+    )
 
     assert abs(tasa_real(story) - 2.08) < 0.05
 
@@ -415,7 +421,9 @@ async def test_marca_la_toma_que_habla_mas_rapido_que_el_resto(
 
     story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
     with caplog.at_level("WARNING"):
-        await StoryNarrator(UnaSaleCorta()).narrate(story, tmp_path)
+        # Una toma por escena: el detector compara tomas entre sí, y con la toma
+        # continua hay una sola.
+        await StoryNarrator(UnaSaleCorta()).narrate(story, tmp_path, de_una_toma=False)
 
     assert "puede haber salido cortada" in caplog.text.lower()
 
@@ -519,3 +527,93 @@ def test_el_pedido_lleva_un_colchon_ANTES_del_texto() -> None:
 
     # y también cuando la escena no lleva etiqueta de emoción
     assert con_entonacion("Dino saltó.", "") == f"{COLCHON_INICIAL} Dino saltó."
+
+
+# --- el cuento se graba de una sola toma -----------------------------------------
+
+
+async def test_el_cuento_se_graba_de_UNA_toma_y_no_una_por_escena(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """Pablo, escuchando el short hecho con una toma por escena: "al ser tarjeta y
+    audio, tarjeta y audio parece que todo fuera de relatos distintos. Creo que
+    debería ser un relato continuo".
+
+    La causa era ésa: pedir cada escena por separado hace que el modelo le ponga
+    entonación de arranque y de cierre a cada una, porque para él cada pedido es un
+    texto completo."""
+    prov = FakeVoiceProvider()
+    story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
+    await StoryNarrator(prov).narrate(story, tmp_path)
+
+    assert len(prov.llamadas) == 1, "el cuento entero va en un solo pedido"
+    assert story.continuous_narration is True
+
+    pedido = prov.llamadas[0]["text"]
+    for escena in story.scenes:
+        assert escena.narration in pedido
+    assert story.moral in pedido and story.closing_question in pedido
+
+
+async def test_cada_escena_se_queda_con_SU_pedazo_del_audio(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """El corte sale de la alineación por caracter y no de una estimación: si estuviera
+    mal, la imagen cambiaría en mitad de una frase."""
+    story = await StoryNarrator(FakeVoiceProvider()).narrate(
+        await _escrita(tema_dinos, estilo_3d, dino, tuca), tmp_path
+    )
+
+    for escena in story.scenes:
+        assert len(escena.audio) == 1
+        assert escena.audio[0].duration_s > 0
+        assert pathlib.Path(escena.audio[0].path).exists()
+        # el texto guardado es el del cuento, no el pedido con las etiquetas adentro
+        assert escena.audio[0].text == escena.narration
+
+    pedazo = duracion_de_wav(pathlib.Path(story.scenes[0].audio[0].path).read_bytes())
+    entero = sum(e.audio[0].duration_s for e in story.scenes)
+    entero += sum(t.duration_s for t in story.closing_audio)
+    assert pedazo < entero, "cada archivo es un pedazo de la toma, no la toma entera"
+
+
+async def test_el_cierre_tambien_sale_de_la_misma_toma(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """Si el cierre se grabara aparte volvería el corte que se vino a sacar, y justo en
+    el momento en que el narrador deja el cuento y le habla al chico."""
+    story = await StoryNarrator(FakeVoiceProvider()).narrate(
+        await _escrita(tema_dinos, estilo_3d, dino, tuca), tmp_path
+    )
+
+    assert len(story.closing_audio) == 2  # moraleja y pregunta
+    assert story.closing_audio[0].text == story.moral
+    assert story.closing_audio[1].text == story.closing_question
+    assert all(t.duration_s > 0 for t in story.closing_audio)
+
+
+async def test_un_proveedor_sin_alineacion_sigue_andando(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """No todos los proveedores devuelven timestamps, y narrar no puede depender de
+    eso: sin alineación se vuelve al modo de una toma por escena."""
+
+    class SinAlineacion:
+        """Un proveedor mínimo: sabe hablar y nada más."""
+
+        def __init__(self) -> None:
+            self._interno = FakeVoiceProvider()
+            self.llamadas: list[dict] = []
+
+        async def synthesize(self, text, **kw):
+            self.llamadas.append({"text": text})
+            return await self._interno.synthesize(text, **kw)
+
+    prov = SinAlineacion()
+    story = await StoryNarrator(prov).narrate(
+        await _escrita(tema_dinos, estilo_3d, dino, tuca), tmp_path
+    )
+
+    assert len(prov.llamadas) > 1, "sin alineación, una toma por escena"
+    assert story.continuous_narration is False
+    assert all(e.audio for e in story.scenes)

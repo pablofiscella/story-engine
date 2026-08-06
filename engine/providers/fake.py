@@ -15,6 +15,7 @@ import wave
 import zlib
 
 from engine.core.exceptions import ProviderRefusedError, ProviderUnavailableError
+from engine.core.interfaces import Alineacion
 
 _FRASES = [
     "El sol se colaba entre las hojas y todo parecía a punto de empezar",
@@ -163,6 +164,41 @@ class FakeVoiceProvider:
         palabras = [p for p in dicho.split() if any(c.isalnum() for c in p)]
         segundos = max(0.1, len(palabras) / (self.palabras_por_s * speed))
         return _wav_silencioso(segundos)
+
+    async def synthesize_aligned(
+        self,
+        text: str,
+        *,
+        voice_id: str | None = None,
+        speed: float = 1.0,
+        audio_format: str = "wav",
+    ) -> tuple[bytes, Alineacion]:
+        """El mismo audio, más en qué segundo cae cada caracter.
+
+        Lo tiene el fake porque es lo que permite narrar el cuento entero de una sola
+        toma: sin esto, el modo continuo sólo se podría probar pagando.
+        """
+        audio = await self.synthesize(
+            text, voice_id=voice_id, speed=speed, audio_format=audio_format
+        )
+        with wave.open(io.BytesIO(audio), "rb") as w:
+            duracion = w.getnframes() / w.getframerate()
+        return audio, _alineacion_pareja(text, duracion)
+
+
+def _alineacion_pareja(texto: str, duracion_s: float) -> Alineacion:
+    """Reparte la duración entre los caracteres, todos iguales.
+
+    La real no es pareja —una coma dura más que una "a"— pero para un test lo que
+    importa es que los cortes caigan DENTRO de la frase que corresponde, y para eso
+    alcanza. Si algún día importa el detalle, se graba una alineación real y se usa
+    de fixture.
+    """
+    paso = duracion_s / len(texto) if texto else 0.0
+    return Alineacion(
+        caracteres=list(texto),
+        fin_s=[round((i + 1) * paso, 4) for i in range(len(texto))],
+    )
 
 
 def _png_marcado(png: bytes, numero: int) -> bytes:

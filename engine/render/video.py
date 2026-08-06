@@ -176,7 +176,10 @@ class ShortRenderer:
         # Cada tramo se genera MÁS LARGO que su escena, porque el cruce con el
         # siguiente se come `TRANSICION_S`. Sin ese margen la imagen se iría antes de
         # que termine su narración.
-        duraciones = [e.real_duration_s + PAUSA_ENTRE_ESCENAS_S for e in story.scenes]
+        # Si el cuento se grabó de una sola toma, el aire entre escenas ya está adentro
+        # del audio: agregarle silencio lo vuelve a partir en pedazos.
+        pausa = 0.0 if story.continuous_narration else PAUSA_ENTRE_ESCENAS_S
+        duraciones = [e.real_duration_s + pausa for e in story.scenes]
         for i, escena in enumerate(story.scenes, start=1):
             largo = duraciones[i - 1] + TRANSICION_S
             entradas += ["-loop", "1", "-t", f"{largo:.3f}", "-i", escena.image_path]
@@ -208,7 +211,7 @@ class ShortRenderer:
 
         # --- el audio -------------------------------------------------------------
         pistas = [t.path for e in story.scenes for t in e.audio]
-        pausas = [PAUSA_ENTRE_ESCENAS_S] * len(pistas)
+        pausas = [pausa] * len(pistas)
         pistas += [t.path for t in story.closing_audio]
         pausas += [0.0] * len(story.closing_audio)
         if pausas:

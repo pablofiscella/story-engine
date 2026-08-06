@@ -98,6 +98,17 @@ class Story(EngineModel):
             "primer día y ningún módulo las usaba — el video terminaba en seco."
         ),
     )
+    continuous_narration: bool = Field(
+        default=False,
+        description=(
+            "Si la narración se grabó de UNA sola toma y después se cortó, en vez de "
+            "una toma por escena. Lo decide el narrador y lo necesita el render: "
+            "cuando es continua NO va silencio entre escenas, porque el aire ya está "
+            "adentro de la toma, donde el narrador lo puso. Metérselo igual vuelve a "
+            "partir en pedazos justo lo que se grabó de corrido, que es la diferencia "
+            "entre un cuento y seis relatos pegados."
+        ),
+    )
     outputs: list[Output] = Field(
         default_factory=list, description="Todo lo generado a partir de esta historia."
     )

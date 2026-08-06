@@ -37,7 +37,7 @@ from engine.core.constants import (
 )
 from engine.core.enums import AudioKind, StoryStatus
 from engine.core.exceptions import DomainError, ProviderError
-from engine.core.interfaces import VoiceProvider
+from engine.core.interfaces import Alineacion, VoiceProvider
 from engine.core.models.audio import AudioTrack
 from engine.core.models.character import Voice
 from engine.core.models.scene import Scene
@@ -102,8 +102,12 @@ class StoryNarrator:
         #: cuenta el cuento no está adentro del cuento.
         self._voz = narrator_voice or Voice(description="cálida y tranquila, de cuento infantil")
 
-    async def narrate(self, story: Story, dest_dir: str | Path) -> Story:
-        """Narra todas las escenas y deja la historia en NARRATED."""
+    async def narrate(self, story: Story, dest_dir: str | Path, *, de_una_toma: bool = True) -> Story:
+        """Narra todas las escenas y deja la historia en NARRATED.
+
+        Por defecto el cuento se graba de UNA SOLA TOMA y después se corta. Ver
+        `_narrar_de_una_toma`: es lo que separa un cuento de seis relatos pegados.
+        """
         if not story.scenes:
             raise DomainError("La historia no tiene escenas: hay que escribirla antes de narrarla.")
 
@@ -111,14 +115,18 @@ class StoryNarrator:
         destino.mkdir(parents=True, exist_ok=True)
         personajes = story.characters_by_id
 
-        limite = asyncio.Semaphore(CONCURRENCIA)
+        if de_una_toma and _sabe_alinear(self._provider):
+            await self._narrar_de_una_toma(story, destino)
+            await self._narrar_dialogos(story, destino, personajes)
+        else:
+            limite = asyncio.Semaphore(CONCURRENCIA)
 
-        async def una(escena: Scene) -> None:
-            async with limite:
-                escena.audio = await self._narrar_escena(escena, destino, personajes)
+            async def una(escena: Scene) -> None:
+                async with limite:
+                    escena.audio = await self._narrar_escena(escena, destino, personajes)
 
-        await asyncio.gather(*(una(e) for e in story.scenes))
-        story.closing_audio = await self._narrar_cierre(story, destino)
+            await asyncio.gather(*(una(e) for e in story.scenes))
+            story.closing_audio = await self._narrar_cierre(story, destino)
 
         self._avisar_tomas_apuradas(story)
         self._avisar_desvios(story)
@@ -126,6 +134,140 @@ class StoryNarrator:
             story.advance_to(StoryStatus.NARRATED)
         story.metadata.touch()
         return story
+
+    async def _narrar_de_una_toma(self, story: Story, destino: Path) -> None:
+        """Graba el cuento ENTERO en una sola toma y después lo corta por escena.
+
+        Es la diferencia entre un cuento y seis relatos pegados. Pablo, escuchando el
+        short hecho con una toma por escena: *"al ser tarjeta y audio, tarjeta y audio
+        parece que todo fuera de relatos distintos. Creo que debería ser un relato
+        continuo"*. Tenía razón y la causa era exactamente ésa: pedir cada escena por
+        separado hace que el modelo le ponga entonación de arranque y de cierre a cada
+        una, porque para él cada pedido es un texto completo.
+
+        Acá va todo junto, con las etiquetas de emoción INTERCALADAS —que es como v3
+        cambia de tono sin cortar el relato— y el corte se hace después, con la
+        alineación por caracter que devuelve el proveedor. Los tiempos no se estiman:
+        se miden sobre el audio que llegó.
+
+        De arrastre desaparecen los dos problemas del arranque y del final: una sola
+        toma tiene un solo comienzo y un solo final, así que hay un solo lugar donde el
+        modelo puede comerse una sílaba, en vez de dieciséis.
+        """
+        trozos: list[str] = [prompts_voz.DIRECCION]
+        for i, escena in enumerate(story.scenes):
+            etiqueta = prompts_voz.etiqueta_de_escena(
+                escena.beat, escena.emotion, es_primera=(i == 0)
+            )
+            if etiqueta:
+                trozos.append(etiqueta)
+            if i == 0:
+                trozos.append(prompts_voz.COLCHON_INICIAL)
+            trozos.append(_limpio(escena.narration))
+
+        cierres = [t for t in (story.moral, story.closing_question) if t]
+        if cierres:
+            # El cierre ya no es el cuento: el narrador le habla al chico que mira.
+            trozos.append(prompts_voz.APERTURA)
+            trozos += [_limpio(t) for t in cierres]
+
+        pedido = " ".join(t for t in trozos if t) + COLCHON_FINAL
+        audio, marcas = await self._toma_continua(pedido)
+
+        desde = 0.0
+        for escena in story.scenes:
+            hasta = marcas.fin_de(_limpio(escena.narration))
+            ruta = destino / f"escena_{escena.index:02d}_narracion.wav"
+            ruta.write_bytes(_recortar(audio, desde, hasta))
+            escena.audio = [
+                AudioTrack(
+                    path=str(ruta),
+                    text=escena.narration,
+                    duration_s=round(hasta - desde, 3),
+                    kind=AudioKind.NARRATION,
+                    character_id=None,
+                    voice_id=self._voz.provider_voice_id or "",
+                )
+            ]
+            desde = hasta
+
+        pistas: list[AudioTrack] = []
+        for n, texto in enumerate(cierres):
+            ultimo = n == len(cierres) - 1
+            hasta = marcas.duracion_s if ultimo else marcas.fin_de(_limpio(texto))
+            ruta = destino / f"cierre_{n}.wav"
+            ruta.write_bytes(_recortar(audio, desde, hasta))
+            pistas.append(
+                AudioTrack(
+                    path=str(ruta),
+                    text=texto,
+                    duration_s=round(hasta - desde, 3),
+                    kind=AudioKind.NARRATION,
+                    character_id=None,
+                    voice_id=self._voz.provider_voice_id or "",
+                )
+            )
+            desde = hasta
+        story.closing_audio = pistas
+
+        # Que el render no meta silencio entre escenas: el aire ya está adentro de la
+        # toma, donde el narrador lo puso. Agregarle 0,45s a cada corte volvería a
+        # partir en pedazos justo lo que se grabó de corrido.
+        story.continuous_narration = True
+
+    async def _toma_continua(self, pedido: str) -> tuple[bytes, Alineacion]:
+        """La toma del cuento entero, con los mismos guardianes que una toma suelta.
+
+        Grabar de una sola vez no vuelve infalible al proveedor: la toma puede llegar
+        cortada o nacer encima de la primera consonante igual que antes. Lo que cambia
+        es que ahora hay UN solo lugar donde puede pasar en vez de dieciséis — y que si
+        pasa, se pierde el cuento entero, así que el guardián importa más, no menos.
+        """
+        audio, marcas = b"", Alineacion([], [])
+        for intento in range(1, INTENTOS_DE_TOMA + 1):
+            audio, marcas = await con_reintentos(
+                lambda: self._provider.synthesize_aligned(  # type: ignore[attr-defined]
+                    pedido,
+                    voice_id=self._voz.provider_voice_id,
+                    speed=self._voz.speed,
+                    audio_format="wav",
+                ),
+                al_reintentar=lambda n, e: logger.warning(
+                    "El proveedor de voz falló narrando el cuento entero (%s). Reintento %s.",
+                    e, n,
+                ),
+            )
+            duracion = duracion_de_wav(audio) if audio else 0.0
+            ataque = ataque_ms(audio) if audio else 0.0
+            if _toma_entera(pedido, duracion) and ataque >= ATAQUE_MINIMO_MS:
+                return audio, marcas
+            motivo = (
+                f"le falta el final (dura {duracion:.1f}s)"
+                if not _toma_entera(pedido, duracion)
+                else f"nace cortada: {ataque:.0f} ms antes de la primera palabra"
+            )
+            logger.warning(
+                "La toma del cuento entero %s. Se pide de nuevo (%s de %s).",
+                motivo, intento, INTENTOS_DE_TOMA,
+            )
+            if olvidar := getattr(self._provider, "olvidar", None):
+                olvidar(pedido, voice_id=self._voz.provider_voice_id,
+                        speed=self._voz.speed, audio_format="wav")
+
+        raise ProviderError(
+            f"La narración del cuento entero llegó cortada {INTENTOS_DE_TOMA} veces "
+            f"seguidas: {motivo}."
+        )
+
+    async def _narrar_dialogos(self, story: Story, destino: Path, personajes) -> None:
+        """Los diálogos, que NO entran en la toma continua.
+
+        Cada personaje tiene su voz: no se pueden grabar junto con la narración, que es
+        de otra. Van después, y se suman a las pistas de su escena.
+        """
+        for escena in story.scenes:
+            if escena.dialogue:
+                escena.audio += await self._narrar_dialogo_de(escena, destino, personajes)
 
     async def _narrar_cierre(self, story: Story, destino: Path) -> list[AudioTrack]:
         """La moraleja y la pregunta final.
@@ -174,6 +316,14 @@ class StoryNarrator:
             )
         )
 
+        pistas += await self._narrar_dialogo_de(escena, destino, personajes)
+        return pistas
+
+    async def _narrar_dialogo_de(
+        self, escena: Scene, destino: Path, personajes
+    ) -> list[AudioTrack]:
+        """Lo que dicen los personajes, cada uno con su voz."""
+        pistas: list[AudioTrack] = []
         hablados = [d for d in escena.dialogue if d.spoken]
         for n, linea in enumerate(hablados):
             personaje = personajes.get(linea.character_id)
@@ -353,10 +503,20 @@ def para_decir(texto: str) -> str:
 
     Termina agregando `COLCHON_FINAL` — ver por qué ahí abajo.
     """
+    return _limpio(texto) + COLCHON_FINAL
+
+
+def _limpio(texto: str) -> str:
+    """El texto arreglado para decirse, SIN el colchón del final.
+
+    Va aparte porque cuando el cuento se graba de una sola toma, el colchón se pone una
+    vez al final de todo y no después de cada frase: doce puntos de más adentro de un
+    relato continuo son doce pausas que nadie pidió.
+    """
     limpio = texto
     for viejo, nuevo in _PARA_DECIR:
         limpio = limpio.replace(viejo, nuevo)
-    return " ".join(limpio.split()).replace(" ,", ",").replace(" .", ".") + COLCHON_FINAL
+    return " ".join(limpio.split()).replace(" ,", ",").replace(" .", ".")
 
 
 def _toma_entera(texto: str, duracion_s: float) -> bool:
@@ -379,6 +539,40 @@ def duracion_de_wav(audio: bytes) -> float:
         if not (fps := w.getframerate()):
             raise ProviderError("El audio no declara frecuencia de muestreo: no se puede medir.")
         return round(w.getnframes() / fps, 3)
+
+
+def _sabe_alinear(provider: object) -> bool:
+    """Si a este proveedor se le puede pedir el audio con los tiempos de cada caracter.
+
+    No alcanza con mirar si tiene el método: un envoltorio —el caché, por ejemplo— lo
+    tiene SIEMPRE, y sólo puede cumplirlo si el proveedor que envuelve también lo tiene.
+    Por eso quien envuelve declara `alinea`, y esa respuesta le gana al método.
+    """
+    if not hasattr(provider, "synthesize_aligned"):
+        return False
+    return bool(getattr(provider, "alinea", True))
+
+
+def _recortar(audio: bytes, desde_s: float, hasta_s: float) -> bytes:
+    """El pedazo del WAV que va de `desde_s` a `hasta_s`.
+
+    Es lo que convierte una toma continua en las pistas por escena que el render
+    espera. Cortar no rompe la continuidad: los pedazos se vuelven a pegar en el mismo
+    orden y sin silencio en el medio, así que suena igual que la toma original — sólo
+    que ahora se sabe en qué segundo cambia la imagen.
+    """
+    with wave.open(io.BytesIO(audio), "rb") as w:
+        canales, ancho, fps = w.getnchannels(), w.getsampwidth(), w.getframerate()
+        w.setpos(min(w.getnframes(), max(0, int(desde_s * fps))))
+        marcos = w.readframes(max(0, int((hasta_s - desde_s) * fps)))
+
+    salida = io.BytesIO()
+    with wave.open(salida, "wb") as w:
+        w.setnchannels(canales)
+        w.setsampwidth(ancho)
+        w.setframerate(fps)
+        w.writeframes(marcos)
+    return salida.getvalue()
 
 
 def ataque_ms(audio: bytes) -> float:

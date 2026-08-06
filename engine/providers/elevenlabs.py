@@ -24,12 +24,14 @@ Sin SDK: son dos endpoints HTTP.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import re
 import urllib.error
 import urllib.request
 
 from engine.core.exceptions import ProviderRefusedError, ProviderUnavailableError
+from engine.core.interfaces import Alineacion
 
 _TTS = "https://api.elevenlabs.io/v1/text-to-speech"
 
@@ -139,23 +141,7 @@ class ElevenLabsProvider:
         if not self.soporta_etiquetas:
             text = _ETIQUETA.sub("", text).strip()
 
-        cuerpo: dict[str, object] = {
-            "text": text,
-            "model_id": self._model,
-            "voice_settings": {
-                "stability": self._stability,
-                "similarity_boost": self._similarity,
-            },
-        }
-        if self._style and self._model in _ACEPTAN_STYLE:
-            cuerpo["voice_settings"] = {
-                **cuerpo["voice_settings"],  # type: ignore[dict-item]
-                "style": self._style,
-                "use_speaker_boost": True,
-            }
-        if speed != 1.0 and self._model in _ACEPTAN_SPEED:
-            cuerpo["voice_settings"] = {**cuerpo["voice_settings"], "speed": speed}  # type: ignore[dict-item]
-
+        cuerpo = self._cuerpo(text, speed)
         codigo, fps = _FORMATOS[audio_format]
         url = f"{_TTS}/{voice_id or self._voz}?output_format={codigo}"
         crudo = await asyncio.to_thread(self._post_sync, url, cuerpo)
@@ -163,7 +149,60 @@ class ElevenLabsProvider:
         # del motor reciba siempre un archivo que se puede medir y abrir.
         return _envolver_wav(crudo, fps=fps) if audio_format == "wav" else crudo
 
+    async def synthesize_aligned(
+        self,
+        text: str,
+        *,
+        voice_id: str | None = None,
+        speed: float = 1.0,
+        audio_format: str = "wav",
+    ) -> tuple[bytes, Alineacion]:
+        """El audio y, además, en qué segundo cae cada caracter.
+
+        Es otro endpoint, no un parámetro: `/with-timestamps` devuelve JSON con el audio
+        en base64 y la alineación, en vez de los bytes pelados.
+
+        Con esto el motor puede narrar el cuento entero de una sola vez —que es lo que lo
+        hace sonar a un relato y no a seis— y aun así saber dónde termina cada escena
+        para cambiar la imagen ahí. Los tiempos dejan de estimarse: se miden.
+        """
+        if audio_format not in _FORMATOS:
+            raise ValueError(f"Formato '{audio_format}' desconocido. Hay: {sorted(_FORMATOS)}.")
+        if not self.soporta_etiquetas:
+            text = _ETIQUETA.sub("", text).strip()
+
+        codigo, fps = _FORMATOS[audio_format]
+        url = f"{_TTS}/{voice_id or self._voz}/with-timestamps?output_format={codigo}"
+        crudo = await asyncio.to_thread(self._post_sync, url, self._cuerpo(text, speed))
+        try:
+            datos = json.loads(crudo)
+            audio = base64.b64decode(datos["audio_base64"])
+            alineacion = datos.get("alignment") or datos["normalized_alignment"]
+            marcas = Alineacion(
+                caracteres=list(alineacion["characters"]),
+                fin_s=list(alineacion["character_end_times_seconds"]),
+            )
+        except (KeyError, ValueError) as e:
+            raise ProviderUnavailableError(
+                f"ElevenLabs no devolvió la alineación esperada: {e}"
+            ) from e
+
+        return (_envolver_wav(audio, fps=fps) if audio_format == "wav" else audio), marcas
+
     # ------------------------------------------------------------------------
+    def _cuerpo(self, text: str, speed: float) -> dict[str, object]:
+        """Los ajustes de voz del pedido. Uno solo para los dos endpoints: si se
+        separaran, el audio alineado podría sonar distinto del que no lo está."""
+        ajustes: dict[str, object] = {
+            "stability": self._stability,
+            "similarity_boost": self._similarity,
+        }
+        if self._style and self._model in _ACEPTAN_STYLE:
+            ajustes |= {"style": self._style, "use_speaker_boost": True}
+        if speed != 1.0 and self._model in _ACEPTAN_SPEED:
+            ajustes |= {"speed": speed}
+        return {"text": text, "model_id": self._model, "voice_settings": ajustes}
+
     def _post_sync(self, url: str, cuerpo: dict[str, object]) -> bytes:
         req = urllib.request.Request(
             url,

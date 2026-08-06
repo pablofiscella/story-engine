@@ -17,6 +17,7 @@ este módulo. Alcanza con tener los métodos correctos (tipado estructural).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
@@ -62,6 +63,45 @@ class ImageProvider(Protocol):
         cómo se ven.
         """
         ...
+
+
+@dataclass(frozen=True)
+class Alineacion:
+    """En qué segundo del audio cae cada caracter del texto que se pidió.
+
+    Existe para poder narrar el cuento ENTERO en una sola toma y aun así cambiar la
+    imagen en el momento exacto. Pablo, mirando el short hecho con una toma por escena:
+    *"al ser tarjeta y audio, tarjeta y audio parece que todo fuera de relatos
+    distintos. Creo que debería ser un relato continuo"*.
+
+    Sin esto habría que elegir entre las dos cosas: o una toma por escena —que da los
+    tiempos pero suena a seis relatos— o una sola toma continua sin saber dónde cortar.
+    """
+
+    caracteres: list[str]
+    fin_s: list[float]
+
+    @property
+    def texto(self) -> str:
+        return "".join(self.caracteres)
+
+    @property
+    def duracion_s(self) -> float:
+        return self.fin_s[-1] if self.fin_s else 0.0
+
+    def fin_de(self, fragmento: str) -> float:
+        """En qué segundo termina de decirse `fragmento`.
+
+        Se busca por contenido y no por índice porque el texto que se manda lleva
+        etiquetas de actuación intercaladas: la posición de una frase en el pedido no
+        es su posición en el cuento.
+        """
+        if not fragmento:
+            raise ValueError("No se puede ubicar un fragmento vacío en el audio.")
+        i = self.texto.find(fragmento)
+        if i < 0:
+            raise ValueError(f"El audio no contiene el fragmento: {fragmento[:60]!r}...")
+        return self.fin_s[i + len(fragmento) - 1]
 
 
 @runtime_checkable

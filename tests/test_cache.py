@@ -87,9 +87,42 @@ async def test_tambien_ahorra_en_la_voz(
     await StoryNarrator(cache).narrate(story, tmp_path / "1")
     await StoryNarrator(cache).narrate(story, tmp_path / "2")
 
-    tomas = len(story.scenes) + 2  # las escenas + moraleja + pregunta de cierre
-    assert len(interno.llamadas) == tomas  # la segunda vuelta fue gratis
-    assert cache.hits == tomas
+    # El cuento se graba de UNA toma, así que el caché guarda una entrada y no ocho.
+    assert len(interno.llamadas) == 1  # la segunda vuelta fue gratis
+    assert cache.hits == 1
+    assert story.continuous_narration is True
+
+
+async def test_el_cache_tambien_guarda_los_TIEMPOS_y_no_solo_el_audio(tmp_path) -> None:
+    """El audio sin la alineación no sirve para el cuento continuo: sin los tiempos no
+    se sabe dónde termina cada escena, y habría que volver a pagarlo entero sólo para
+    recuperar unos números que ya se habían pedido."""
+    interno = FakeVoiceProvider()
+    cache = CachedVoiceProvider(interno, tmp_path)
+
+    audio, marcas = await cache.synthesize_aligned("Dino saltó feliz.", voice_id="lizy")
+    otra_vez, mismas = await cache.synthesize_aligned("Dino saltó feliz.", voice_id="lizy")
+
+    assert len(interno.llamadas) == 1, "la segunda salió del caché"
+    assert otra_vez == audio
+    assert mismas.caracteres == marcas.caracteres
+    assert mismas.fin_s == marcas.fin_s
+    assert mismas.fin_de("Dino") > 0
+
+
+async def test_el_cache_no_promete_alinear_si_el_de_adentro_no_sabe(tmp_path) -> None:
+    """El envoltorio TIENE el método siempre. Si el motor mirara nada más que eso,
+    daría por alineado a cualquier proveedor y el cuento se caería al primer pedido."""
+
+    class SoloHabla:
+        async def synthesize(self, text, **kw):
+            return await FakeVoiceProvider().synthesize(text, **kw)
+
+    assert CachedVoiceProvider(SoloHabla(), tmp_path).alinea is False
+    assert CachedVoiceProvider(FakeVoiceProvider(), tmp_path).alinea is True
+
+    with pytest.raises(AttributeError):
+        await CachedVoiceProvider(SoloHabla(), tmp_path).synthesize_aligned("hola")
 
 
 async def test_dice_cuanto_ahorro(tmp_path) -> None:

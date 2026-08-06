@@ -249,8 +249,11 @@ async def test_el_video_no_puede_durar_menos_que_el_audio(
     story = await _lista(tmp_path, tema_dinos, estilo_3d, dino, tuca)
     salida = ShortRenderer().render(story, tmp_path / "corto.mp4")
 
+    # Cuando la narración se grabó de una sola toma no hay silencio entre escenas: el
+    # aire ya está adentro del audio.
+    pausa = 0.0 if story.continuous_narration else PAUSA_ENTRE_ESCENAS_S
     audio = TITULO_S + COLA_FINAL_S
-    audio += sum(e.audio_duration_s + PAUSA_ENTRE_ESCENAS_S for e in story.scenes)
+    audio += sum(e.audio_duration_s + pausa for e in story.scenes)
     audio += sum(t.duration_s for t in story.closing_audio)
 
     real = float(subprocess.run(

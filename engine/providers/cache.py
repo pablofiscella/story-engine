@@ -24,10 +24,12 @@ no miente.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
+from dataclasses import asdict
 from pathlib import Path
 
-from engine.core.interfaces import ImageProvider, VoiceProvider
+from engine.core.interfaces import Alineacion, ImageProvider, VoiceProvider
 
 #: Se puede mover el caché de disco sin tocar código.
 VARIABLE_DE_ENTORNO = "STORY_ENGINE_CACHE"
@@ -163,6 +165,48 @@ class CachedVoiceProvider(_Base):
         ruta.write_bytes(audio)
         return audio
 
+    @property
+    def alinea(self) -> bool:
+        """Si el proveedor de adentro sabe devolver los tiempos de cada caracter.
+
+        Hace falta preguntarlo porque este envoltorio **siempre** tiene el método:
+        si el motor mirara nada más que eso, creería que cualquier proveedor alineado
+        —y con uno que no lo está, el cuento entero se caería al primer pedido.
+        """
+        return hasattr(self._inner, "synthesize_aligned")
+
+    async def synthesize_aligned(
+        self,
+        text: str,
+        *,
+        voice_id: str | None = None,
+        speed: float = 1.0,
+        audio_format: str = "wav",
+    ) -> tuple[bytes, Alineacion]:
+        """Igual que `synthesize`, pero guardando también la alineación.
+
+        Sin esto el caché rompía el modo continuo sin decir nada: el narrador pregunta
+        si el proveedor sabe alinear, el caché no sabía, y el cuento volvía a grabarse
+        de a una escena por vez. En los tests andaba —ahí no hay caché— y en producción
+        no, que es donde el caché siempre está.
+        """
+        if not self.alinea:
+            raise AttributeError("El proveedor de adentro no devuelve alineación.")
+
+        ruta = self._ruta("voz-alineada", text, voice_id, speed, audio_format)
+        marcas = ruta.with_suffix(".json")
+        if ruta.exists() and marcas.exists():
+            self.hits += 1
+            return ruta.read_bytes(), Alineacion(**json.loads(marcas.read_text()))
+
+        self.misses += 1
+        audio, alineacion = await self._inner.synthesize_aligned(  # type: ignore[attr-defined]
+            text, voice_id=voice_id, speed=speed, audio_format=audio_format
+        )
+        ruta.write_bytes(audio)
+        marcas.write_text(json.dumps(asdict(alineacion)))
+        return audio, alineacion
+
     def olvidar(
         self,
         text: str,
@@ -175,5 +219,12 @@ class CachedVoiceProvider(_Base):
 
         La usa el narrador cuando una toma nace cortada o le falta el final. Sin esto,
         el reintento pide la misma entrada del caché tres veces y falla igual.
+
+        Se olvidan las dos formas de la misma toma —con y sin alineación— porque el
+        narrador no sabe cuál de las dos guardó el pedido que está rechazando.
         """
-        return self._olvidar("voz", text, voice_id, speed, audio_format)
+        suelta = self._olvidar("voz", text, voice_id, speed, audio_format)
+        ruta = self._ruta("voz-alineada", text, voice_id, speed, audio_format)
+        ruta.with_suffix(".json").unlink(missing_ok=True)
+        alineada = self._olvidar("voz-alineada", text, voice_id, speed, audio_format)
+        return suelta or alineada
