@@ -7,6 +7,8 @@ que no vuelva.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from engine.core.enums import EducationalValue, NarrativeBeat
@@ -46,6 +48,27 @@ def test_ningun_proposito_dice_los_dos_sin_nombrarlos() -> None:
                     f"{valor.value}/{beat.value} habla de dos personajes sin nombrar al "
                     f"compañero: el planificador no puede saber a quién sumar al elenco."
                 )
+
+
+def test_ningun_proposito_habla_de_gente_que_no_esta_en_el_elenco() -> None:
+    """El mismo bug que el de arriba, entrando por otra puerta: el gancho de "amistad"
+    decía *"mirando de lejos cómo juegan los demás"*.
+
+    "Los demás" no existen. El elenco de una historia son el protagonista y el
+    compañero, y el prompt de imagen prohíbe agregar personajes — con razón. Así que
+    el escritor escribía "los demás jugaban felices en el claro" y la ilustración
+    mostraba a Dino mirando un claro **vacío**: el texto y la imagen contándose cosas
+    distintas.
+
+    Si hace falta que alguien más esté en escena, es `{companero}`: esa marca es la
+    que el planificador busca para armar el elenco."""
+    terceros = re.compile(r"\b(los dem[aá]s|el grupo|los otros|otros \w+|todos)\b", re.IGNORECASE)
+    for valor, perfil in PROFILES.items():
+        for beat, texto in perfil.purposes.items():
+            assert not terceros.search(texto), (
+                f"{valor.value}/{beat.value} habla de personajes que no están en el "
+                f"elenco: «{texto}». La imagen no los puede mostrar."
+            )
 
 
 async def test_el_final_siempre_incluye_al_companero(

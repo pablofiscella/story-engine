@@ -168,10 +168,22 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         moral="Un amigo se gana acercándose, no esperando.",
         question="¿Y vos, cómo hiciste tu mejor amigo?",
         purposes={
-            NarrativeBeat.HOOK: "Mostrar a {protagonista} mirando de lejos cómo juegan los demás",
-            NarrativeBeat.PROBLEM: "{protagonista} quiere sumarse pero le da vergüenza",
-            NarrativeBeat.ATTEMPT: "{protagonista} se acerca sin animarse a hablar",
-            NarrativeBeat.FAILURE: "Se queda callado y el momento pasa",
+            # Nombrar a {companero} no es un detalle de redacción: el elenco de la
+            # escena se arma buscando esa marca. Cuando acá decía "los demás", el
+            # escritor escribía "los demás jugaban felices" y la imagen mostraba un
+            # claro VACÍO —porque el elenco cerrado prohíbe agregar personajes—, así
+            # que el texto y la imagen se contradecían. Es la regla 1 otra vez, que se
+            # arregló en el final de "compartir" y había quedado viva acá.
+            NarrativeBeat.HOOK: "Mostrar a {protagonista} mirando de lejos cómo juega {companero}",
+            NarrativeBeat.PROBLEM: (
+                "{protagonista} quiere sumarse a {companero} pero le da vergüenza"
+            ),
+            NarrativeBeat.ATTEMPT: "{protagonista} se acerca a {companero} sin animarse a hablar",
+            # {companero} también acá: el perfil le da CALMA en este beat —sigue en lo
+            # suyo, sin enterarse—, y esa calma es justo lo que hace doler el momento.
+            # Sin nombrarlo, el escritor igual escribía "Rexo se aleja" y la imagen no
+            # lo podía mostrar.
+            NarrativeBeat.FAILURE: "{protagonista} se queda callado y {companero} sigue en lo suyo",
             NarrativeBeat.LESSON: (
                 "{companero} lo invita, y {protagonista} descubre que bastaba con animarse"
             ),
