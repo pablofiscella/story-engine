@@ -117,6 +117,24 @@ class Scene(EngineModel):
             "no la IA — es dirección de arte, no redacción."
         ),
     )
+    shot_description: str = Field(
+        default="",
+        description=(
+            "QUÉ SE VE en esta imagen, escrito mirando el cuento entero: dónde está "
+            "cada personaje, qué hace con las manos, hacia dónde mira, y qué cambió "
+            "respecto de la escena anterior.\n\n"
+            "Existe porque la narración está escrita para OÍRSE, no para verse: "
+            "'Dino se fue a un rincón y jugó solo' no dice dónde queda el rincón ni "
+            "qué hace el otro mientras tanto, así que cada imagen resolvía eso por su "
+            "cuenta y la secuencia daba saltos. Pablo, mirando el lote: *'hay que leer "
+            "el fragmento de texto y pensar bien la imagen y que tenga coherencia con "
+            "las que siguen'*.\n\n"
+            "Lo escribe el storyboard leyendo TODAS las escenas de una vez — es la "
+            "única forma de que una imagen sepa qué pasó en la anterior. Las reglas "
+            "duras (elenco, clima, objeto, encuadre) siguen viniendo del motor y le "
+            "ganan a esto si se contradicen."
+        ),
+    )
     audio: list[AudioTrack] = Field(
         default_factory=list,
         description=(

@@ -28,6 +28,7 @@ from engine.core.models.style import Style
 from engine.core.models.theme import Theme
 from engine.generators.narrator import StoryNarrator
 from engine.generators.planner import StoryPlanner
+from engine.generators.storyboarder import Storyboarder
 from engine.generators.values import profile_for
 from engine.generators.writer import StoryWriter
 
@@ -44,6 +45,7 @@ class StoryEngine:
     ) -> None:
         self._planner = StoryPlanner()
         self._writer = StoryWriter(text_provider) if text_provider is not None else None
+        self._storyboarder = Storyboarder(text_provider) if text_provider is not None else None
         self._narrator = (
             StoryNarrator(voice_provider, narrator_voice=narrator_voice)
             if voice_provider is not None
@@ -124,8 +126,15 @@ class StoryEngine:
         characters: list[Character],
         language: Language = Language.ES_AR,
         title: str = "",
+        con_storyboard: bool = True,
     ) -> Story:
-        """Planifica y escribe. Devuelve la historia lista para ilustrar y narrar."""
+        """Planifica, escribe y arma el storyboard. Lista para ilustrar y narrar.
+
+        El storyboard va acá y no en el ilustrador porque necesita el proveedor de
+        TEXTO, y porque tiene que correr con el cuento entero ya escrito: es el único
+        paso que ve todas las escenas juntas, que es lo que le da continuidad a las
+        imágenes.
+        """
         if self._writer is None:
             raise RuntimeError(
                 "Este motor no tiene proveedor de texto: solo puede planificar. "
@@ -141,7 +150,10 @@ class StoryEngine:
             language=language,
             title=title,
         )
-        return await self._writer.write(story)
+        await self._writer.write(story)
+        if con_storyboard and self._storyboarder is not None:
+            await self._storyboarder.draw(story)
+        return story
 
     async def narrate(self, story: Story, dest_dir: str) -> Story:
         """Le pone voz a una historia ya escrita, y mide cuánto dura de verdad.

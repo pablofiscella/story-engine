@@ -91,7 +91,9 @@ async def test_las_escenas_encadenan(
     """A partir de la segunda, el pedido incluye lo que pasó antes."""
     provider = FakeTextProvider()
     motor = StoryEngine(text_provider=provider)
-    await motor.generate(**_kwargs(tema_dinos, estilo_3d, dino, tuca))
+    # Sin storyboard: éste es un test del ESCRITOR, y el storyboard suma un pedido más
+    # al final —el del cuento entero— que no encadena porque las ve todas juntas.
+    await motor.generate(**_kwargs(tema_dinos, estilo_3d, dino, tuca), con_storyboard=False)
     assert "La escena anterior terminó" not in provider.llamadas[0]
     assert all("La escena anterior terminó" in p for p in provider.llamadas[1:])
 
@@ -101,7 +103,7 @@ async def test_a_la_ultima_escena_se_le_pide_que_cierre(
 ) -> None:
     provider = FakeTextProvider()
     motor = StoryEngine(text_provider=provider)
-    await motor.generate(**_kwargs(tema_dinos, estilo_3d, dino, tuca))
+    await motor.generate(**_kwargs(tema_dinos, estilo_3d, dino, tuca), con_storyboard=False)
     assert "última escena" in provider.llamadas[-1]
     assert not any("última escena" in p for p in provider.llamadas[:-1])
 

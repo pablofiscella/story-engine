@@ -136,6 +136,13 @@ def compose(
 
     # --- Regla 3: manda lo que se narra --------------------------------------
     bloques.append(f"Qué está pasando: {scene.narration or scene.purpose}")
+    # Y CÓMO se ve, que es otra cosa: la narración está escrita para oírse. "Se fue a
+    # un rincón y jugó solo" no dice dónde queda el rincón ni qué hace el otro
+    # mientras tanto, así que cada imagen lo resolvía distinto y la secuencia saltaba.
+    # Esto lo escribe el storyboard habiendo leído el cuento entero — es lo único del
+    # prompt que sabe qué pasó en la escena anterior.
+    if scene.shot_description:
+        bloques.append(f"Puesta en escena: {scene.shot_description}")
     if scene.visual_note:
         bloques.append(scene.visual_note)
 
