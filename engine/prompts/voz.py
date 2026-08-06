@@ -74,11 +74,28 @@ def etiqueta_de_escena(beat: NarrativeBeat, emotion: Emotion, *, es_primera: boo
     return _POR_EMOCION.get(emotion, "")
 
 
+#: Lo que se le pone DELANTE del texto para que el modelo no arranque encima de la
+#: primera consonante.
+#:
+#: v3 a veces empieza la toma justo sobre la primera letra y se come su ataque. Pablo,
+#: escuchando el short: *"parece que dijera nano salto, era dino salto"* — la D es una
+#: oclusiva y sin su explosión suena N.
+#:
+#: Medido con la misma frase: sin nada delante, entre 0 y 194 ms de silencio inicial
+#: según la toma; **con una coma, 602 ms**. Una coma no se pronuncia: sólo le pide al
+#: modelo que respire antes de empezar. Es el mismo truco que el punto del final, en el
+#: otro extremo de la toma.
+COLCHON_INICIAL = ","
+
+
 def con_entonacion(texto: str, etiqueta: str) -> str:
     """El texto listo para el modelo de voz.
 
     La etiqueta va adelante y separada: es una instrucción de actuación, no parte de
     lo que se dice. Por eso tampoco cuenta para el presupuesto de palabras ni para
     verificar que la toma llegó entera.
+
+    Entre la etiqueta y el texto va `COLCHON_INICIAL` — ver por qué ahí arriba.
     """
-    return f"{etiqueta} {texto}".strip() if etiqueta else texto
+    partes = [p for p in (etiqueta, COLCHON_INICIAL, texto) if p]
+    return " ".join(partes).strip()

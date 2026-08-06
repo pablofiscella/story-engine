@@ -507,3 +507,15 @@ def _con_sonido_desde_el_principio(wav: bytes) -> bytes:
         w.setparams(params)
         w.writeframes(ruido)
     return salida.getvalue()
+
+def test_el_pedido_lleva_un_colchon_ANTES_del_texto() -> None:
+    """Para que v3 no arranque encima de la primera consonante: "Dino" sonaba "nano".
+    Medido con la misma frase: sin nada delante, entre 0 y 194 ms de silencio inicial
+    según la toma; con una coma, 602 ms. Una coma no se pronuncia."""
+    from engine.prompts.voz import COLCHON_INICIAL, con_entonacion
+
+    con_etiqueta = con_entonacion("Dino saltó.", "[warmly]")
+    assert con_etiqueta == f"[warmly] {COLCHON_INICIAL} Dino saltó."
+
+    # y también cuando la escena no lleva etiqueta de emoción
+    assert con_entonacion("Dino saltó.", "") == f"{COLCHON_INICIAL} Dino saltó."
