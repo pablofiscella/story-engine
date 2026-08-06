@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import io
 import re
+import struct
 import wave
+import zlib
 
 from engine.core.exceptions import ProviderRefusedError, ProviderUnavailableError
 
@@ -111,8 +113,16 @@ class FakeImageProvider:
         self.llamadas.append(
             {"prompt": prompt, "refs": list(reference_images or []), "size": (width, height)}
         )
-        # imagen distinta por llamada, para poder seguirle el rastro a las anclas
-        return self.PNG + str(len(self.llamadas)).encode()
+        # Imagen distinta por llamada, para poder seguirle el rastro a las anclas.
+        #
+        # El número va DENTRO del PNG, en un chunk `tEXt`, y no pegado al final del
+        # archivo. Pegarlo al final parece inofensivo —Pillow ignora lo que venga
+        # después de IEND— pero rompe a ffmpeg: con `-loop 1` vuelve a leer el archivo
+        # desde el principio, y en la segunda vuelta ese byte suelto queda delante de
+        # la firma (`31` + `89504E47`). ffmpeg no puede decodificar, reintenta, vuelve
+        # a fallar, y se queda al 100% de CPU sin emitir un solo frame ni terminar
+        # nunca. Costó un test de render colgado 20 minutos hasta encontrarlo.
+        return _png_marcado(self.PNG, len(self.llamadas))
 
 
 #: Igual que en el proveedor real: lo que va entre corchetes se actúa, no se lee.
@@ -153,6 +163,25 @@ class FakeVoiceProvider:
         palabras = [p for p in dicho.split() if any(c.isalnum() for c in p)]
         segundos = max(0.1, len(palabras) / (self.palabras_por_s * speed))
         return _wav_silencioso(segundos)
+
+
+def _png_marcado(png: bytes, numero: int) -> bytes:
+    """El mismo PNG con un número adentro, y siguiendo válido.
+
+    El número va en un chunk `tEXt` antes de IEND, con su CRC como manda el formato.
+    Un PNG con basura al final lo aceptan casi todos los lectores, y por eso el
+    problema aparece tardísimo y en otro lado: en ffmpeg, que vuelve a leer el
+    archivo desde cero en cada vuelta del `-loop`.
+    """
+    fin = png.rindex(b"IEND") - 4
+    datos = b"llamada\x00" + str(numero).encode()
+    chunk = (
+        struct.pack(">I", len(datos))
+        + b"tEXt"
+        + datos
+        + struct.pack(">I", zlib.crc32(b"tEXt" + datos) & 0xFFFFFFFF)
+    )
+    return png[:fin] + chunk + png[fin:]
 
 
 def _wav_silencioso(segundos: float, *, fps: int = 22050) -> bytes:

@@ -68,8 +68,10 @@ async def test_las_escenas_siguientes_reciben_el_ancla(
     primera = prov.llamadas[0]
     # todas las llamadas posteriores llevan al menos una referencia
     assert all(c["refs"] for c in prov.llamadas[1:])
-    # y la referencia del protagonista es EXACTAMENTE la primera imagen generada
-    imagen_ancla = FakeImageProvider.PNG + b"1"
+    # y la referencia del protagonista es EXACTAMENTE la primera imagen generada.
+    # Se lee del archivo y no se rearma a mano: cómo el fake marca cada imagen es
+    # asunto suyo, y este test es sobre el ancla.
+    imagen_ancla = Path(story.scenes[0].image_path).read_bytes()
     assert any(imagen_ancla in c["refs"] for c in prov.llamadas[1:])
     assert primera["refs"] == []
 
@@ -152,3 +154,22 @@ async def test_una_escena_sin_prompt_no_se_ilustra_a_ciegas(
     story.scenes[0].image_prompt = ""
     with pytest.raises(DomainError, match="no tiene prompt de imagen"):
         await SceneIllustrator(FakeImageProvider()).illustrate(story, tmp_path)
+
+
+async def test_el_fake_devuelve_un_PNG_VALIDO_y_no_uno_con_basura_al_final() -> None:
+    """Un PNG con bytes de más después de IEND lo acepta casi todo: Pillow lo abre, el
+    disco lo guarda, el test pasa. Pero ffmpeg vuelve a leer el archivo desde cero en
+    cada vuelta de `-loop 1`, y ahí ese byte suelto queda pegado adelante de la firma
+    (`31` + `89504E47`). No falla: reintenta, vuelve a fallar, y se queda al 100% de
+    CPU sin emitir un frame ni terminar nunca.
+
+    Un provider de prueba que genera un archivo *casi* válido no simula: miente, y lo
+    hace en el único lugar donde el test no mira."""
+    prov = FakeImageProvider()
+    primera = await prov.generate_image("una escena")
+    segunda = await prov.generate_image("otra escena")
+
+    assert primera != segunda, "cada llamada tiene que dar una imagen distinguible"
+    for imagen in (primera, segunda):
+        assert imagen.startswith(b"\x89PNG\r\n\x1a\n")
+        assert imagen.endswith(b"IEND\xaeB`\x82"), "nada puede venir después de IEND"
