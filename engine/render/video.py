@@ -186,7 +186,13 @@ class ShortRenderer:
         # --- el cierre, sobre la última imagen -----------------------------------
         cierre_s = sum(t.duration_s for t in story.closing_audio) + COLA_FINAL_S
         idx_cierre = len(story.scenes) + 1
-        entradas += ["-loop", "1", "-t", f"{cierre_s:.3f}", "-i", story.scenes[-1].image_path]
+        # También con el margen del cruce: el último `xfade` acorta el resultado en
+        # `TRANSICION_S`, y si el video queda más corto que el audio, `-shortest` le
+        # corta el final a la narración. Pasó: la última frase perdía una sílaba.
+        entradas += [
+            "-loop", "1", "-t", f"{cierre_s + TRANSICION_S:.3f}",
+            "-i", story.scenes[-1].image_path,
+        ]
         # La moraleja se dice primero y la pregunta después: el texto entra un
         # segundo antes de que empiece la pregunta hablada.
         antes_de_la_pregunta = sum(t.duration_s for t in story.closing_audio[:-1])
@@ -218,10 +224,9 @@ class ShortRenderer:
         cadena_v = _encadenar(tramos, [TITULO_S, *duraciones])
         # El fundido al negro arranca cuando arranca la cola: se apaga mientras suena
         # el último silencio, en vez de cortar en la última sílaba.
-        # Cada cruce consume `TRANSICION_S` del total y los tramos se generaron con
-        # ese margen de más, así que los dos efectos se cancelan — salvo el último
-        # cruce, que sí acorta el resultado.
-        total = TITULO_S + sum(duraciones) + cierre_s - TRANSICION_S
+        # Cada cruce consume `TRANSICION_S` y cada tramo se generó con ese margen de
+        # más: los dos efectos se cancelan y el video dura exactamente lo que el audio.
+        total = TITULO_S + sum(duraciones) + cierre_s
         arranque = max(0.0, total - COLA_FINAL_S)
         cadena_v += f";[vcrudo]fade=t=out:st={arranque:.3f}:d={COLA_FINAL_S}[video]"
 

@@ -233,3 +233,28 @@ def test_una_sola_escena_no_necesita_cruce() -> None:
     from engine.render.video import _encadenar
 
     assert "xfade" not in _encadenar(["[a]"], [5.0])
+
+
+@sin_ffmpeg
+async def test_el_video_no_puede_durar_menos_que_el_audio(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """`-shortest` corta el stream más largo: si el video queda corto, le come el
+    final a la narración. Pasó por el último `xfade`, que acorta el resultado en
+    `TRANSICION_S` — la última frase perdía una sílaba."""
+    import subprocess
+
+    from engine.core.constants import COLA_FINAL_S, PAUSA_ENTRE_ESCENAS_S, TITULO_S
+
+    story = await _lista(tmp_path, tema_dinos, estilo_3d, dino, tuca)
+    salida = ShortRenderer().render(story, tmp_path / "corto.mp4")
+
+    audio = TITULO_S + COLA_FINAL_S
+    audio += sum(e.audio_duration_s + PAUSA_ENTRE_ESCENAS_S for e in story.scenes)
+    audio += sum(t.duration_s for t in story.closing_audio)
+
+    real = float(subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "csv=p=0", str(salida)],
+        capture_output=True, text=True, check=True).stdout.strip())
+    assert real >= audio - 0.15, f"el video ({real:.2f}s) corta el audio ({audio:.2f}s)"
