@@ -451,3 +451,59 @@ async def test_el_colchon_no_ensucia_lo_que_queda_guardado(
     for escena in story.scenes:
         assert escena.audio[0].text == escena.narration
         assert not escena.audio[0].text.endswith(" .")
+
+async def test_una_toma_que_NACE_CORTADA_se_pide_de_nuevo(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """El caso que escuchó Pablo: "el comienzo del video parece que dijera nano salto,
+    era dino salto". La toma dura lo que tiene que durar y el proveedor la dio por
+    buena — pero empieza encima de la D y se come su explosión.
+
+    Medido sobre las ocho tomas de ese cuento: la mala tenía 0 ms de silencio inicial
+    y las siete buenas, entre 222 y 496 ms."""
+
+    class ArrancaEncima(FakeVoiceProvider):
+        """La primera toma empieza con sonido en la muestra 0; el resto, normales."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.sin_ataque = 0
+
+        async def synthesize(self, text, **kw):
+            audio = await super().synthesize(text, **kw)
+            if self.sin_ataque == 0:
+                self.sin_ataque += 1
+                return _con_sonido_desde_el_principio(audio)
+            return audio
+
+    prov = ArrancaEncima()
+    story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
+    await StoryNarrator(prov).narrate(story, tmp_path)  # no explota: la pide de nuevo
+
+    assert prov.sin_ataque == 1
+    assert all(t.duration_s > 0 for e in story.scenes for t in e.audio)
+
+
+def test_el_ataque_se_mide_en_milisegundos() -> None:
+    """La medición es lo único que separa esa toma de una buena, así que se testea sola."""
+    from engine.generators.narrator import ataque_ms
+    from engine.providers.fake import _wav_silencioso
+
+    assert ataque_ms(_con_sonido_desde_el_principio(_wav_silencioso(1.0))) == 0.0
+    assert ataque_ms(_wav_silencioso(1.0)) == float("inf")  # todo silencio: no es su tema
+
+
+def _con_sonido_desde_el_principio(wav: bytes) -> bytes:
+    """El mismo WAV pero con sonido fuerte desde la primera muestra."""
+    import io
+    import struct
+    import wave
+
+    with wave.open(io.BytesIO(wav), "rb") as w:
+        params, marcos = w.getparams(), w.readframes(w.getnframes())
+    ruido = struct.pack(f"<{len(marcos) // 2}h", *([9000] * (len(marcos) // 2)))
+    salida = io.BytesIO()
+    with wave.open(salida, "wb") as w:
+        w.setparams(params)
+        w.writeframes(ruido)
+    return salida.getvalue()

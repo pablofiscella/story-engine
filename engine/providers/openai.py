@@ -34,10 +34,14 @@ CALIDADES = ("low", "medium", "high")
 #: mes cambia de orden de magnitud según esto. Pablo, 5-ago-2026: *"a 1 dólar el short
 #: son 100 dólares al mes por 3 videos por día. Es inviable"*.
 #:
-#: Queda en `medium` a propósito: lo que se mira en un teléfono, en vertical y con
-#: fundidos de por medio, no es una lámina para imprimir. Subirlo a `high` es una
-#: decisión que hay que justificar mirando las dos, no el default.
-CALIDAD_POR_DEFECTO = "medium"
+#: Queda en `low` porque Pablo comparó los dos shorts enteros —el mismo cuento, el mismo
+#: audio, sólo cambiando esto— y dijo *"se ve bien en la resolución baja"*. No es una
+#: estimación: es el producto terminado mirado al lado del caro.
+#:
+#: Lo que se mira en un teléfono, en vertical, con fundidos de 0,4s y texto encima, no es
+#: una lámina para imprimir. Subirlo es una decisión que hay que justificar mirando las
+#: dos, no algo que se herede del default de la API.
+CALIDAD_POR_DEFECTO = "low"
 
 
 class OpenAIProvider:

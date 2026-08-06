@@ -27,6 +27,7 @@ import asyncio
 import io
 import logging
 import statistics
+import struct
 import wave
 from pathlib import Path
 
@@ -69,6 +70,19 @@ PISO_DE_TOMA = 0.5
 #: Frenar la producción entera por una toma mala es justo lo que no puede pasar
 #: cuando esto corre solo, diez veces por día.
 INTENTOS_DE_TOMA = 3
+
+#: Cuánto silencio tiene que haber ANTES de la primera palabra.
+#:
+#: v3 a veces arranca la toma justo encima de la primera consonante y se come su
+#: explosión. Lo escuchó Pablo en el short: *"el comienzo del video parece que dijera
+#: nano salto, era dino salto"*. La D es una oclusiva —su ataque dura milisegundos— y
+#: sin ellos suena como una N.
+#:
+#: Medido sobre las ocho tomas de ese cuento: la que sonaba mal tenía **0 ms** y las
+#: siete que sonaban bien, entre 222 y 496 ms. Y no es determinista: la misma frase
+#: pedida de nuevo salió con 194 ms. Por eso no alcanza con pedirla distinto —hay que
+#: MIRAR el audio que llegó y volver a pedirlo si nació cortado.
+ATAQUE_MINIMO_MS = 60
 
 #: Cuánto puede una toma hablar más rápido que el resto de la historia antes de que
 #: sea sospechosa de estar cortada.
@@ -219,17 +233,30 @@ class StoryNarrator:
                 ),
             )
             duracion = duracion_de_wav(audio) if audio else 0.0
-            if _toma_entera(decible, duracion):
+            ataque = ataque_ms(audio) if audio else 0.0
+            if _toma_entera(decible, duracion) and ataque >= ATAQUE_MINIMO_MS:
                 break
-            logger.warning(
-                "%s: la toma llegó cortada (%.1fs). Se pide de nuevo (%s de %s).",
-                ruta.name, duracion, intento, INTENTOS_DE_TOMA,
+            motivo = (
+                f"le falta el final (dura {duracion:.1f}s)"
+                if not _toma_entera(decible, duracion)
+                else f"nace cortada: {ataque:.0f} ms de silencio antes de la primera palabra"
             )
+            logger.warning(
+                "%s: la toma %s. Se pide de nuevo (%s de %s).",
+                ruta.name, motivo, intento, INTENTOS_DE_TOMA,
+            )
+            # Si hay un caché delante, la toma mala quedó guardada y pedirla de nuevo
+            # devuelve la MISMA: tres intentos idénticos y a fallar. Se le pide que la
+            # tire. Con `getattr` porque el Protocol de VoiceProvider no lo exige: un
+            # proveedor sin caché no tiene nada que olvidar.
+            if olvidar := getattr(self._provider, "olvidar", None):
+                olvidar(pedido, voice_id=voz.provider_voice_id, speed=voz.speed,
+                        audio_format="wav")
         else:
             raise ProviderError(
                 f"La toma '{ruta.name}' llegó cortada {INTENTOS_DE_TOMA} veces seguidas: "
-                f"dura {duracion:.1f}s y para decir {len(decible.split())} palabras hacen "
-                f"falta unos {len(decible.split()) / WORDS_PER_SECOND:.1f}s."
+                f"{motivo}. Para decir {len(decible.split())} palabras hacen falta unos "
+                f"{len(decible.split()) / WORDS_PER_SECOND:.1f}s."
             )
 
         ruta.write_bytes(audio)
@@ -352,6 +379,32 @@ def duracion_de_wav(audio: bytes) -> float:
         if not (fps := w.getframerate()):
             raise ProviderError("El audio no declara frecuencia de muestreo: no se puede medir.")
         return round(w.getnframes() / fps, 3)
+
+
+def ataque_ms(audio: bytes) -> float:
+    """Milisegundos de silencio antes de la primera palabra de la toma.
+
+    Cero significa que el audio empieza encima de la primera consonante, y ahí la D de
+    "Dino" pierde su explosión y suena "nano". Es lo único que distingue esa toma de una
+    buena: dura lo que tiene que durar y el proveedor la dio por buena.
+
+    El umbral es relativo al pico de la propia toma y no un valor fijo, porque el volumen
+    depende de la voz y de los ajustes. Si el WAV no se puede medir, devuelve infinito:
+    esto es un guardián, y un guardián que no sabe no frena la producción.
+    """
+    with wave.open(io.BytesIO(audio), "rb") as w:
+        if w.getsampwidth() != 2 or not (fps := w.getframerate()):
+            return float("inf")
+        canales = w.getnchannels() or 1
+        muestras = struct.unpack(f"<{w.getnframes() * canales}h", w.readframes(w.getnframes()))
+
+    if not muestras:
+        return 0.0
+    umbral = max(200, max(max(muestras), -min(muestras)) // 50)
+    for i, valor in enumerate(muestras):
+        if abs(valor) >= umbral:
+            return round(i / canales / fps * 1000, 1)
+    return float("inf")  # toda la toma es silencio; de eso se ocupa el piso de duración
 
 
 def tasa_real(story: Story) -> float:

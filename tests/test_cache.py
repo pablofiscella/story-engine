@@ -254,3 +254,21 @@ def test_una_calidad_inventada_no_pasa_en_silencio() -> None:
 
     with pytest.raises(ValueError, match="[Cc]alidad"):
         OpenAIProvider("k", image_quality="alta")
+
+async def test_una_toma_mala_no_se_queda_pegada_en_el_cache(tmp_path) -> None:
+    """El caché y los reintentos se pelean: si la toma que llegó mal queda guardada,
+    pedirla de nuevo devuelve la MISMA, y el guardián se queda sin salida — tres
+    intentos idénticos y a fallar. Quien detecta el problema tiene que poder decir
+    "esto no"."""
+    interno = FakeVoiceProvider()
+    cache = CachedVoiceProvider(interno, tmp_path)
+
+    await cache.synthesize("Dino saltó", voice_id="lizy")
+    await cache.synthesize("Dino saltó", voice_id="lizy")
+    assert len(interno.llamadas) == 1, "la segunda tiene que salir del caché"
+
+    assert cache.olvidar("Dino saltó", voice_id="lizy") is True
+    await cache.synthesize("Dino saltó", voice_id="lizy")
+    assert len(interno.llamadas) == 2, "después de olvidarla, se pide de verdad"
+
+    assert cache.olvidar("nunca se pidió esto") is False

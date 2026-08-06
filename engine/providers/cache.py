@@ -77,6 +77,20 @@ class _Base:
             h.update(parte if isinstance(parte, bytes) else str(parte).encode())
         return self._dir / f"{h.hexdigest()[:32]}{self._ext}"
 
+    def _olvidar(self, *partes: object) -> bool:
+        """Borra una entrada. Devuelve si había algo que borrar.
+
+        Existe porque el caché y los reintentos se pelean: si una toma llegó mal y
+        quedó guardada, pedirla de nuevo devuelve **exactamente la misma toma mala**, y
+        el guardián que la rechaza se queda sin salida —tres intentos idénticos y a
+        fallar. Quien detecta que algo salió mal tiene que poder decir "esto no".
+        """
+        ruta = self._ruta(*partes)
+        if not ruta.exists():
+            return False
+        ruta.unlink()
+        return True
+
     @property
     def ahorro(self) -> str:
         """Una línea para el log: cuántos pedidos no se pagaron."""
@@ -148,3 +162,18 @@ class CachedVoiceProvider(_Base):
         )
         ruta.write_bytes(audio)
         return audio
+
+    def olvidar(
+        self,
+        text: str,
+        *,
+        voice_id: str | None = None,
+        speed: float = 1.0,
+        audio_format: str = "wav",
+    ) -> bool:
+        """Tirá esta toma: llegó mal y no quiero que me la devuelvas de nuevo.
+
+        La usa el narrador cuando una toma nace cortada o le falta el final. Sin esto,
+        el reintento pide la misma entrada del caché tres veces y falla igual.
+        """
+        return self._olvidar("voz", text, voice_id, speed, audio_format)
