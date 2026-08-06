@@ -22,13 +22,17 @@ Más el ancla de ESTILO del tema, que va siempre y en primer lugar.
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 
 from engine.core.enums import CharacterRole, StoryStatus
 from engine.core.exceptions import DomainError, ProviderError
 from engine.core.interfaces import ImageProvider
 from engine.core.models.story import Story
+from engine.core.retry import con_reintentos
 from engine.prompts import image as image_prompts
+
+logger = logging.getLogger(__name__)
 
 #: Cuántas escenas se ilustran a la vez. Bajo a propósito: las anclas se construyen
 #: con las primeras imágenes, así que hay un orden que respetar. Solo se paraleliza
@@ -116,7 +120,11 @@ class SceneIllustrator:
         refs: list[bytes] = []
         if estilo_ref:
             refs.append(estilo_ref)
-        refs += [anclas[c] for c in escena.character_ids if c in anclas]
+        # también los imaginados: si Rexo aparece en una burbuja, necesita su ancla
+        # igual que si estuviera parado en la escena.
+        for cid in list(escena.character_ids) + list(escena.imagined_character_ids):
+            if cid in anclas and anclas[cid] not in refs:
+                refs.append(anclas[cid])
 
         prompt = escena.image_prompt or ""
         if not prompt:
@@ -126,11 +134,19 @@ class SceneIllustrator:
         if negativo:
             prompt = f"{prompt} EVITAR: {negativo}"
 
-        img = await self._provider.generate_image(
-            prompt,
-            reference_images=refs or None,
-            width=self._width,
-            height=self._height,
+        # Un 500 de OpenAI en la escena 3 tiraba abajo la historia entera y las dos
+        # imágenes ya pagadas. Es transitorio: se insiste antes de darlo por perdido.
+        img = await con_reintentos(
+            lambda: self._provider.generate_image(
+                prompt,
+                reference_images=refs or None,
+                width=self._width,
+                height=self._height,
+            ),
+            al_reintentar=lambda n, e: logger.warning(
+                "Escena %s: el proveedor de imagen falló (%s). Reintento %s.",
+                escena.index, e, n,
+            ),
         )
         if not img:
             raise ProviderError(

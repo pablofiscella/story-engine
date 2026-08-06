@@ -28,7 +28,7 @@ from engine.core.constants import (
     MIN_SCENE_DURATION_S,
     MIN_SCENES,
 )
-from engine.core.enums import Emotion, NarrativeBeat
+from engine.core.enums import Emotion, NarrativeBeat, ShotType
 from engine.core.exceptions import InvalidArcError, InvalidDurationError
 from engine.core.models.base import EngineModel, Slug
 
@@ -51,7 +51,69 @@ class ScenePlan(EngineModel):
     character_ids: list[Slug] = Field(
         min_length=1, description="Quiénes aparecen. Al menos uno: nadie habla solo al vacío."
     )
-    emotion: Emotion = Field(description="Emoción dominante. Guía tono, cara y música.")
+    emotion: Emotion = Field(
+        description="El TONO de la escena. Guía la música y, por defecto, a cada personaje."
+    )
+    character_emotions: dict[Slug, Emotion] = Field(
+        default_factory=dict,
+        description=(
+            "Qué siente CADA personaje, cuando difiere del tono de la escena. El que "
+            "no figura acá siente `emotion`. "
+            "Existe porque una escena tiene dos lados: en el problema de 'compartir' "
+            "el protagonista está enojado y el compañero solo quiere jugar. Con una "
+            "sola emoción por escena, el ilustrador les ponía a los dos la misma cara "
+            "de enojo y los mismos brazos cruzados."
+        ),
+    )
+    imagined_character_ids: list[Slug] = Field(
+        default_factory=list,
+        description=(
+            "Personajes que aparecen en la escena SIN estar físicamente: en una "
+            "burbuja de pensamiento, un recuerdo, un dibujo. Van aparte de "
+            "`character_ids` porque el prompt tiene que describirlos igual —si no, el "
+            "modelo los inventa— pero sin contarlos como presentes en la escena."
+        ),
+    )
+    prop: str = Field(
+        default="",
+        description=(
+            "El objeto del conflicto en esta escena ('una pelota de colores'), si lo "
+            "hay. Va aparte y no metido en el propósito: el prompt de imagen se arma "
+            "con la NARRACIÓN, y el escritor —que tiene el presupuesto de palabras "
+            "apretado— es el primero que deja de nombrarlo. Cuando eso pasó, el "
+            "modelo dibujó a Dino jugando con piedras."
+        ),
+    )
+    shot: ShotType = Field(
+        default=ShotType.MEDIUM,
+        description=(
+            "Encuadre. Lo decide el motor por beat: sin esto todas las escenas salen "
+            "en plano medio y el gancho y el intento dan la misma imagen."
+        ),
+    )
+    visual_note: str = Field(
+        default="",
+        description=(
+            "Recurso visual para esta escena, si el beat lo pide: una burbuja de "
+            "pensamiento, un objeto en primer plano. Dirección de arte decidida por "
+            "el motor."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validar_emociones(self) -> ScenePlan:
+        """Nadie puede sentir algo si no está en la escena, ni siquiera imaginado."""
+        conocidos = set(self.character_ids) | set(self.imagined_character_ids)
+        if sueltos := set(self.character_emotions) - conocidos:
+            raise InvalidArcError(
+                f"Escena {self.index}: se le asigna emoción a {sorted(sueltos)}, que no "
+                f"aparece{'n' if len(sueltos) > 1 else ''} en la escena."
+            )
+        return self
+
+    def emotion_for(self, character_id: str) -> Emotion:
+        """Qué siente este personaje acá. Si no se dijo, el tono de la escena."""
+        return self.character_emotions.get(character_id, self.emotion)
 
 
 class StoryPlan(EngineModel):

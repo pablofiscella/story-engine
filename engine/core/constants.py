@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
-from engine.core.enums import AgeRange, NarrativeBeat, StoryStatus
+from engine.core.enums import AgeRange, NarrativeBeat, ShotType, StoryStatus
 
 #: Orden canónico del arco. El planificador puede REPETIR beats (varios intentos)
 #: o saltear alguno en historias muy cortas, pero nunca alterar este orden relativo.
@@ -24,6 +24,27 @@ CANONICAL_ARC: tuple[NarrativeBeat, ...] = (
 #: Posición de cada beat, para validar orden sin recorrer la tupla.
 BEAT_ORDER: MappingProxyType[NarrativeBeat, int] = MappingProxyType(
     {beat: i for i, beat in enumerate(CANONICAL_ARC)}
+)
+
+#: Con qué encuadre se cuenta cada beat.
+#:
+#: Antes todas las escenas salían en plano medio y el cuento se veía plano: el
+#: gancho y el intento daban literalmente la misma imagen —el protagonista solo con
+#: el objeto— porque tenían el mismo elenco y el mismo encuadre.
+#:
+#: El criterio es de cine, no de variedad por variedad: el gancho ABRE (hay que ver
+#: dónde estamos), el conflicto se cuenta a media distancia (hay que ver a los dos y
+#: el objeto), el aprendizaje es un momento de cara, y el final vuelve a abrir para
+#: mostrar el mundo ya arreglado.
+SHOT_BY_BEAT: MappingProxyType[NarrativeBeat, ShotType] = MappingProxyType(
+    {
+        NarrativeBeat.HOOK: ShotType.WIDE,
+        NarrativeBeat.PROBLEM: ShotType.MEDIUM,
+        NarrativeBeat.ATTEMPT: ShotType.OVER_SHOULDER,
+        NarrativeBeat.FAILURE: ShotType.MEDIUM,
+        NarrativeBeat.LESSON: ShotType.CLOSE_UP,
+        NarrativeBeat.ENDING: ShotType.WIDE,
+    }
 )
 
 # --- Duración -------------------------------------------------------------------
@@ -99,3 +120,22 @@ ALLOWED_TRANSITIONS: MappingProxyType[StoryStatus, frozenset[StoryStatus]] = Map
         ),
     }
 )
+
+
+# --- Ritmo del video ------------------------------------------------------------
+#: Silencio entre una escena y la siguiente.
+#:
+#: Sin esto las narraciones se pisan: la última palabra de una escena y la primera
+#: de la siguiente quedan pegadas, y el cuento suena apurado. Lo escuchó Pablo en el
+#: primer short: *"entre cada texto parece que se junta mucho el audio"*.
+PAUSA_ENTRE_ESCENAS_S = 0.45
+
+#: Aire después de la última palabra, antes de que termine el video.
+#:
+#: Un cuento que corta en seco en la última sílaba se siente roto aunque esté
+#: completo. También le da lugar al fundido.
+COLA_FINAL_S = 1.2
+
+#: Cuánto dura la placa de título del principio.
+#: Corta a propósito: en un short los primeros segundos deciden si se quedan.
+TITULO_S = 2.0

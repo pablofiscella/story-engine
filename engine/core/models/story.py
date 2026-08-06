@@ -27,6 +27,7 @@ from engine.core.exceptions import (
     InvalidStateTransitionError,
     UnknownCharacterError,
 )
+from engine.core.models.audio import AudioTrack
 from engine.core.models.base import EngineModel
 from engine.core.models.character import Character
 from engine.core.models.metadata import StoryMetadata
@@ -88,6 +89,15 @@ class Story(EngineModel):
     scenes: list[Scene] = Field(
         default_factory=list, description="Las escenas escritas. Desde WRITTEN en adelante."
     )
+    closing_audio: list[AudioTrack] = Field(
+        default_factory=list,
+        description=(
+            "La moraleja y la pregunta final, narradas. Van aparte de las escenas "
+            "porque no son parte del cuento: el cuento ya terminó y esto es lo que se "
+            "le dice a quien mira. `moral` y `closing_question` existían desde el "
+            "primer día y ningún módulo las usaba — el video terminaba en seco."
+        ),
+    )
     outputs: list[Output] = Field(
         default_factory=list, description="Todo lo generado a partir de esta historia."
     )
@@ -105,7 +115,13 @@ class Story(EngineModel):
         conocidos = {sc.character.id for sc in self.characters}
 
         for escena in self.scenes:
-            desconocidos = set(escena.character_ids) - conocidos
+            # los imaginados cuentan igual: si no están declarados, el prompt no los
+            # describe y el modelo los inventa (el Rexo violeta de la burbuja).
+            desconocidos = (
+                set(escena.character_ids)
+                | set(escena.imagined_character_ids)
+                | set(escena.character_emotions)
+            ) - conocidos
             if desconocidos:
                 raise UnknownCharacterError(
                     f"La escena {escena.index} usa personajes que no están en el elenco: "

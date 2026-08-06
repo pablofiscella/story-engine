@@ -20,12 +20,13 @@ from engine.core.enums import (
     Language,
     StoryStatus,
 )
-from engine.core.interfaces import TextProvider
-from engine.core.models.character import Character
+from engine.core.interfaces import TextProvider, VoiceProvider
+from engine.core.models.character import Character, Voice
 from engine.core.models.metadata import StoryMetadata
 from engine.core.models.story import Story, StoryCharacter
 from engine.core.models.style import Style
 from engine.core.models.theme import Theme
+from engine.generators.narrator import StoryNarrator
 from engine.generators.planner import StoryPlanner
 from engine.generators.values import profile_for
 from engine.generators.writer import StoryWriter
@@ -34,9 +35,20 @@ from engine.generators.writer import StoryWriter
 class StoryEngine:
     """Arma historias completas a partir de una intención."""
 
-    def __init__(self, *, text_provider: TextProvider | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        text_provider: TextProvider | None = None,
+        voice_provider: VoiceProvider | None = None,
+        narrator_voice: Voice | None = None,
+    ) -> None:
         self._planner = StoryPlanner()
         self._writer = StoryWriter(text_provider) if text_provider is not None else None
+        self._narrator = (
+            StoryNarrator(voice_provider, narrator_voice=narrator_voice)
+            if voice_provider is not None
+            else None
+        )
 
     def plan(
         self,
@@ -130,3 +142,16 @@ class StoryEngine:
             title=title,
         )
         return await self._writer.write(story)
+
+    async def narrate(self, story: Story, dest_dir: str) -> Story:
+        """Le pone voz a una historia ya escrita, y mide cuánto dura de verdad.
+
+        Es un paso aparte y no parte de `generate` a propósito: el texto se revisa
+        (y se corrige) antes de gastar en TTS, que es lo que se paga por caracter.
+        """
+        if self._narrator is None:
+            raise RuntimeError(
+                "Este motor no tiene proveedor de voz. "
+                "Pasale un `voice_provider` para poder narrar."
+            )
+        return await self._narrator.narrate(story, dest_dir)

@@ -73,6 +73,7 @@ def tema_dinos() -> Theme:
         description="Un valle prehistórico lleno de helechos gigantes.",
         palette=Palette(primary="#2E7D32", secondary="#FFB300", accent="#D84315"),
         locations=["el claro de los helechos", "la laguna tibia"],
+        props=["una pelota de colores"],
         character_ids=["dino-rex", "tuca-tucan"],
         default_style_id="pixar-3d",
     )
@@ -135,3 +136,18 @@ def escena(plan_valido: StoryPlan) -> Scene:
     return Scene.from_plan(
         plan_valido.scenes[0], narration="Dino asomó la cabeza entre los helechos."
     )
+
+
+@pytest.fixture(autouse=True)
+def sin_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ningún test espera el backoff de verdad.
+
+    La política de reintentos se prueba contando llamadas; esperar los segundos
+    reales solo hace lenta la suite. Sin esto, un solo test de caída del proveedor
+    agregaba 6 segundos.
+    """
+
+    async def ya(_segundos: float) -> None:
+        return None
+
+    monkeypatch.setattr("engine.core.retry.asyncio.sleep", ya)

@@ -44,6 +44,15 @@ class OpenAIProvider:
         self._image_model = image_model
         self._timeout = timeout
 
+    @property
+    def cache_fingerprint(self) -> str:
+        """Qué determina el resultado, además del pedido. Va en la clave del caché.
+
+        Sin esto, cambiar de modelo devolvería lo generado con el anterior como si
+        fuera nuevo — el bug del caché de TTS que no llevaba la voz en la clave.
+        """
+        return f"openai:{self._text_model}:{self._image_model}"
+
     async def generate_text(
         self,
         prompt: str,

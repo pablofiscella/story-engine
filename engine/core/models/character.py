@@ -100,10 +100,13 @@ class Character(EngineModel):
     def _sin_vacios(cls, v: list[str]) -> list[str]:
         return [s.strip() for s in v if s and s.strip()]
 
-    def expression_for(self, emotion: Emotion) -> str:
-        """Cómo se ve este personaje sintiendo `emotion`.
+    def expression_for(self, emotion: Emotion, default: str = "") -> str:
+        """Cómo se ve ESTE personaje sintiendo `emotion`.
 
-        Si no está definida, cae a una descripción genérica en vez de romper: una
-        expresión faltante no puede frenar la generación de una historia entera.
+        `expressions` es el override del personaje: un dinosaurio que cuando se
+        frustra infla los cachetes en vez de cruzar los brazos. Casi ningún personaje
+        lo necesita, así que quien llama pasa el gesto genérico como `default`.
+
+        Nunca rompe: una expresión faltante no puede frenar una historia entera.
         """
-        return self.expressions.get(emotion, f"expresión de {emotion.value}")
+        return self.expressions.get(emotion) or default or f"expresión de {emotion.value}"

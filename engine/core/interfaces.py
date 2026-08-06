@@ -74,8 +74,19 @@ class VoiceProvider(Protocol):
         *,
         voice_id: str | None = None,
         speed: float = 1.0,
+        audio_format: str = "wav",
     ) -> bytes:
-        """Devuelve los bytes del audio (mp3)."""
+        """Devuelve los bytes del audio.
+
+        El formato por defecto es WAV y no mp3 a propósito: el motor necesita MEDIR
+        cuánto dura cada pista para que la imagen no cambie antes de que termine la
+        frase, y la stdlib de Python sabe leer la duración de un WAV pero no la de un
+        mp3. Poder medir sin sumar una dependencia vale más que el tamaño del archivo,
+        que además es temporal — el render comprime al final.
+
+        Mismas excepciones que el resto: `ProviderUnavailableError` si es transitorio,
+        `ProviderRefusedError` si el pedido fue rechazado.
+        """
         ...
 
 

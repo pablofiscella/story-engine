@@ -131,22 +131,29 @@ async def test_texto_vacio_falla_claro(
         await motor.generate(**_kwargs(tema_dinos, estilo_3d, dino, tuca))
 
 
-async def test_falla_transitoria_sube_como_tal(
+async def test_falla_transitoria_se_reintenta_y_recien_ahi_sube(
     tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
 ) -> None:
-    """Reintentable: el que llama decide si vuelve a intentar."""
-    motor = StoryEngine(text_provider=ProviderQueCae())
+    """Un 5xx es transitorio: se insiste. Si igual no se recupera, sube como tal
+    para que el que llama sepa que puede volver a intentar más tarde."""
+    from engine.core.retry import INTENTOS
+
+    provider = ProviderQueCae()
+    motor = StoryEngine(text_provider=provider)
     with pytest.raises(ProviderUnavailableError):
         await motor.generate(**_kwargs(tema_dinos, estilo_3d, dino, tuca))
+    assert len(provider.llamadas) == INTENTOS
 
 
 async def test_rechazo_de_contenido_no_se_confunde_con_caida(
     tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
 ) -> None:
     """Reintentar contra un filtro de contenido quema cuota sin ninguna chance."""
-    motor = StoryEngine(text_provider=ProviderQueCae(refused=True))
+    provider = ProviderQueCae(refused=True)
+    motor = StoryEngine(text_provider=provider)
     with pytest.raises(ProviderRefusedError):
         await motor.generate(**_kwargs(tema_dinos, estilo_3d, dino, tuca))
+    assert len(provider.llamadas) == 1  # ni un intento de más
 
 
 async def test_escribir_sin_plan_no_se_puede(historia) -> None:
@@ -247,3 +254,10 @@ def test_recortar_no_toca_lo_que_ya_entra() -> None:
 def test_el_subtitulo_corta_en_la_primera_frase_si_es_largo() -> None:
     largo = "Frase uno bien cortita. " + "palabra " * 30
     assert _subtitulo(largo) == "Frase uno bien cortita."
+
+
+def test_el_recorte_no_deja_la_frase_colgada() -> None:
+    """El bug: una narración salió "...juegan con la pelota de colores en el." —
+    cortada justo en una preposición, que no cierra nada."""
+    texto = "Dino y Rexo juegan felices con la pelota de colores en el claro del bosque"
+    assert _recortar(texto, 12) == "Dino y Rexo juegan felices con la pelota de colores."
