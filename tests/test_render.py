@@ -261,3 +261,72 @@ async def test_el_video_no_puede_durar_menos_que_el_audio(
          "-of", "csv=p=0", str(salida)],
         capture_output=True, text=True, check=True).stdout.strip())
     assert real >= audio - 0.15, f"el video ({real:.2f}s) corta el audio ({audio:.2f}s)"
+
+
+# --- el título, ahora hablado -----------------------------------------------------
+
+
+async def _con_titulo(tmp_path, tema, estilo, dino, tuca, titulo="Dino aprende a compartir"):
+    story = await StoryEngine(text_provider=FakeTextProvider()).generate(
+        theme=tema, style=estilo, value=EducationalValue.SHARING,
+        age=4, duration_s=30.0, characters=[dino, tuca], title=titulo,
+    )
+    await SceneIllustrator(FakeImageProvider()).illustrate(story, tmp_path / "img")
+    await StoryNarrator(FakeVoiceProvider()).narrate(story, tmp_path / "audio")
+    return story
+
+
+@sin_ffmpeg
+async def test_el_video_con_titulo_hablado_no_corta_el_audio(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """La placa tiene que durar lo que tarda en decirse el título.
+
+    Antes duraba dos segundos fijos y el render le anteponía dos segundos de silencio
+    al audio. Con el título hablado, dejar ese silencio correría el cuento entero y
+    `-shortest` le comería el final: es el mismo error del último `xfade`, por otra
+    puerta.
+    """
+    import subprocess
+
+    from engine.core.constants import COLA_FINAL_S, PAUSA_ENTRE_ESCENAS_S, TITULO_S
+
+    story = await _con_titulo(tmp_path, tema_dinos, estilo_3d, dino, tuca)
+    salida = ShortRenderer().render(story, tmp_path / "corto.mp4")
+
+    pausa = 0.0 if story.continuous_narration else PAUSA_ENTRE_ESCENAS_S
+    dur_titulo = sum(t.duration_s for t in story.title_audio)
+    audio = max(TITULO_S, dur_titulo) + COLA_FINAL_S
+    audio += sum(e.audio_duration_s + pausa for e in story.scenes)
+    audio += sum(t.duration_s for t in story.closing_audio)
+
+    real = float(subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "csv=p=0", str(salida)],
+        capture_output=True, text=True, check=True).stdout.strip())
+    assert story.title_audio, "el título se narró"
+    assert real >= audio - 0.15, f"el video ({real:.2f}s) corta el audio ({audio:.2f}s)"
+
+
+@sin_ffmpeg
+async def test_sin_titulo_narrado_la_placa_sigue_siendo_muda(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """El camino viejo tiene que seguir funcionando.
+
+    Un proveedor sin alineación narra escena por escena y no deja título hablado; ahí
+    el render vuelve a la placa de duración fija con su silencio adelante, que es como
+    venía andando.
+    """
+    import subprocess
+
+    story = await _con_titulo(tmp_path, tema_dinos, estilo_3d, dino, tuca)
+    story.title_audio = []
+
+    salida = ShortRenderer().render(story, tmp_path / "mudo.mp4")
+
+    real = float(subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "csv=p=0", str(salida)],
+        capture_output=True, text=True, check=True).stdout.strip())
+    assert real > 0

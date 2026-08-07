@@ -183,9 +183,14 @@ class OpenAIProvider:
             mensajes.append({"role": "system", "content": system})
         mensajes.append({"role": "user", "content": contenido})
 
-        data = await self._post(
-            _CHAT, {"model": self._vision_model, "messages": mensajes}
-        )
+        cuerpo: dict[str, object] = {"model": self._vision_model, "messages": mensajes}
+        # El esfuerzo de razonamiento no es un detalle: la medición que eligió este
+        # modelo se hizo con `high`, y con menos el modelo mira menos. Pedirlo distinto
+        # de como se midió es no tener medición.
+        if self._vision_model.startswith("gpt-5"):
+            cuerpo["reasoning_effort"] = "high"
+
+        data = await self._post(_CHAT, cuerpo)
         try:
             return data["choices"][0]["message"]["content"] or ""
         except (KeyError, IndexError) as e:
