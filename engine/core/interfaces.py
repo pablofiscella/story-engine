@@ -65,6 +65,49 @@ class ImageProvider(Protocol):
         ...
 
 
+@runtime_checkable
+class TranscriptionProvider(Protocol):
+    """ESCUCHA un audio y devuelve lo que se entiende.
+
+    Existe para verificar la pronunciación, que es lo único del audio que no se puede
+    medir con la stdlib: la duración y el silencio inicial se leen del WAV, pero si el
+    modelo dijo "Maqueno" en vez de "Dino" el archivo es perfectamente normal.
+    """
+
+    async def transcribe(self, audio: bytes, *, language: str = "es") -> str:
+        """Lo que se entiende del audio, en texto."""
+        ...
+
+
+@runtime_checkable
+class VisionProvider(Protocol):
+    """MIRA imágenes y contesta preguntas sobre ellas. Lo usa el verificador.
+
+    Va aparte de `TextProvider` por la misma razón que las otras: no todo proveedor
+    de texto ve. Y va aparte de `ImageProvider` porque generar y mirar son capacidades
+    distintas —el que dibuja no es el que revisa—, y de hecho conviene que no sean el
+    mismo modelo: quien produjo el error es el que menos chance tiene de verlo.
+    """
+
+    async def inspect_image(
+        self,
+        prompt: str,
+        images: list[bytes],
+        *,
+        system: str | None = None,
+    ) -> str:
+        """Devuelve la respuesta del modelo, en texto.
+
+        `images` es una lista y no una imagen porque una vista sola no alcanza: la
+        escena completa sirve para contar personajes y el recorte ampliado para contar
+        patas. Medido — sobre la imagen entera el modelo no ve las patas de más.
+
+        Mismas excepciones que el resto: `ProviderUnavailableError` si es transitorio,
+        `ProviderRefusedError` si el pedido fue rechazado.
+        """
+        ...
+
+
 @dataclass(frozen=True)
 class Alineacion:
     """En qué segundo del audio cae cada caracter del texto que se pidió.

@@ -15,11 +15,16 @@ _CRLF = b"\r\n"
 def build(
     fields: dict[str, str],
     files: list[tuple[str, str, bytes]],
+    *,
+    content_type: str = "image/png",
 ) -> tuple[str, bytes]:
     """(content_type, cuerpo) listos para el POST.
 
     `files` es [(nombre_campo, nombre_archivo, bytes)]. Para varias referencias, OpenAI
     exige el campo `image[]` — repetir `image` da 400 "Duplicate parameter".
+
+    `content_type` es el de los archivos que se mandan, no el del pedido: el mismo
+    armador sirve para subir imágenes a `/images/edits` y audio a `/transcriptions`.
     """
     frontera = "----storyengine" + secrets.token_hex(16)
     sep = f"--{frontera}".encode()
@@ -37,7 +42,7 @@ def build(
         partes += [
             sep,
             f'Content-Disposition: form-data; name="{campo}"; filename="{nombre}"'.encode(),
-            b"Content-Type: image/png",
+            f"Content-Type: {content_type}".encode(),
             b"",
             crudo,
         ]

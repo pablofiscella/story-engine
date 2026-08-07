@@ -23,11 +23,17 @@ from engine.core.models.scene import DialogueLine
 from engine.engine import StoryEngine
 from engine.generators.narrator import (
     StoryNarrator,
+    _primera_palabra,
     duracion_de_wav,
     para_decir,
     tasa_real,
 )
-from engine.providers.fake import FakeTextProvider, FakeVoiceProvider
+from engine.providers.fake import (
+    FakeTextProvider,
+    FakeTranscriber,
+    FakeVoiceProvider,
+    TranscriptorQueCae,
+)
 
 pytestmark = pytest.mark.anyio
 
@@ -617,3 +623,130 @@ async def test_un_proveedor_sin_alineacion_sigue_andando(
     assert len(prov.llamadas) > 1, "sin alineación, una toma por escena"
     assert story.continuous_narration is False
     assert all(e.audio for e in story.scenes)
+
+
+# --- el título, que se veía pero no se decía --------------------------------------
+
+
+async def test_el_titulo_se_narra_al_principio_de_la_toma(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """Pablo, mirando el segundo lote: *"aparece el título pero no habla en ningún
+    video"*.
+
+    La placa existía desde el primer render y nadie la leía: el short arrancaba con
+    dos segundos de silencio mirando un cartel.
+    """
+    story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
+    story.metadata.title = "Dino aprende a compartir"
+    prov = FakeVoiceProvider()
+
+    await StoryNarrator(prov).narrate(story, tmp_path)
+
+    assert story.title_audio, "el título quedó grabado como pista propia"
+    assert story.title_audio[0].text == "Dino aprende a compartir"
+    assert story.title_audio[0].duration_s > 0
+    assert pathlib.Path(story.title_audio[0].path).is_file()
+
+
+async def test_el_titulo_va_en_la_MISMA_toma_que_el_cuento(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """Y no como pedido aparte.
+
+    Es la misma razón por la que las escenas van juntas: dos pedidos son dos
+    interpretaciones, y un título anunciado con otra entonación suena a locutor y no
+    a alguien que se sienta a contar un cuento.
+    """
+    story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
+    story.metadata.title = "Dino aprende a compartir"
+    prov = FakeVoiceProvider()
+
+    await StoryNarrator(prov).narrate(story, tmp_path)
+
+    pedidos = [ll["text"] for ll in prov.llamadas]
+    assert len(pedidos) == 1, "un solo pedido para el cuento entero, título incluido"
+    assert "Dino aprende a compartir." in pedidos[0]
+    assert pedidos[0].index("Dino aprende a compartir") < pedidos[0].index(
+        story.scenes[0].narration[:20]
+    ), "el título se dice ANTES del cuento"
+
+
+async def test_una_historia_sin_titulo_no_inventa_placa_hablada(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """Sin título no hay nada que decir, y el render vuelve solo a la placa muda."""
+    story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
+    story.metadata.title = ""
+
+    await StoryNarrator(FakeVoiceProvider()).narrate(story, tmp_path)
+
+    assert story.title_audio == []
+
+
+# --- el guardián de pronunciación -------------------------------------------------
+
+
+async def test_la_toma_que_dice_Nino_en_vez_de_Dino_se_pide_de_nuevo(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """El error que Pablo escuchó tres veces sobre el mismo nombre.
+
+    Primero *"nano"*, después *"Maqueno"*. El texto siempre decía "Dino": lo pronuncia
+    mal el modelo, y el WAV es idéntico de sano —dura lo que tiene que durar y arranca
+    con su silencio—, así que ningún guardián de los que había podía verlo. La única
+    forma es escuchar la toma.
+    """
+    story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
+    story.metadata.title = "Dino aprende a compartir"
+    prov = FakeVoiceProvider()
+    oreja = FakeTranscriber(["Nino aprende a compartir.", "Dino aprende a compartir."])
+
+    await StoryNarrator(prov, transcriber=oreja).narrate(story, tmp_path)
+
+    assert len(prov.llamadas) == 2, "la primera toma se descartó y se pidió otra"
+
+
+async def test_si_ninguna_toma_se_entiende_bien_el_cuento_sale_igual(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """Un nombre mal dicho no puede costar el cuento entero.
+
+    Es distinto de la toma cortada, que sí lo frena: media narración no es un
+    producto. Una "N" donde iba una "D" en la primera palabra, sí.
+    """
+    story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
+    story.metadata.title = "Dino aprende a compartir"
+    oreja = FakeTranscriber(["Nino aprende a compartir."])
+
+    narrada = await StoryNarrator(FakeVoiceProvider(), transcriber=oreja).narrate(
+        story, tmp_path
+    )
+
+    assert narrada.status is StoryStatus.NARRATED
+    assert all(e.audio for e in narrada.scenes)
+
+
+async def test_si_transcribir_falla_la_toma_pasa(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """Un guardián que no puede escuchar no frena nada."""
+    story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
+    story.metadata.title = "Dino aprende a compartir"
+    prov, oreja = FakeVoiceProvider(), TranscriptorQueCae()
+
+    await StoryNarrator(prov, transcriber=oreja).narrate(story, tmp_path)
+
+    assert len(prov.llamadas) == 1, "no se pidió de nuevo por no poder verificar"
+    assert oreja.llamadas > 0
+
+
+def test_la_primera_palabra_ignora_etiquetas_y_puntuacion() -> None:
+    """Lo que se compara es lo que se DICE.
+
+    `[warmly]` no se pronuncia y la coma del colchón inicial tampoco: si contaran, el
+    guardián compararía la etiqueta contra el nombre y acusaría siempre.
+    """
+    assert _primera_palabra("[warmly] [slows down] , Dino, el dinosaurio") == "dino"
+    assert _primera_palabra("Nino, el dinosaurio bebé") == "nino"
+    assert _primera_palabra("[solo una etiqueta]") == ""

@@ -26,8 +26,10 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import re
 import statistics
 import struct
+import unicodedata
 import wave
 from pathlib import Path
 
@@ -96,8 +98,17 @@ DESVIO_SOSPECHOSO = 0.25
 class StoryNarrator:
     """Convierte una historia escrita en una historia narrada."""
 
-    def __init__(self, provider: VoiceProvider, *, narrator_voice: Voice | None = None) -> None:
+    def __init__(
+        self,
+        provider: VoiceProvider,
+        *,
+        narrator_voice: Voice | None = None,
+        transcriber: object | None = None,
+    ) -> None:
         self._provider = provider
+        #: Con qué se ESCUCHA la toma para verificar que dijo lo que decía el texto.
+        #: Opcional: sin él, el narrador funciona exactamente como antes.
+        self._transcriber = transcriber
         #: La voz que lee la narración. Es del NARRADOR, no de un personaje: quien
         #: cuenta el cuento no está adentro del cuento.
         self._voz = narrator_voice or Voice(description="cálida y tranquila, de cuento infantil")
@@ -155,13 +166,27 @@ class StoryNarrator:
         modelo puede comerse una sílaba, en vez de dieciséis.
         """
         trozos: list[str] = [prompts_voz.DIRECCION]
+
+        # El TÍTULO va primero, y se dice. La placa existía desde el primer render y
+        # nadie la leía: Pablo, mirando el segundo lote, *"aparece el título pero no
+        # habla en ningún video"*. Va adentro de la toma continua y no como pedido
+        # aparte por la misma razón que las escenas: dos pedidos son dos
+        # interpretaciones, y el título pegado al gancho con otra entonación suena a
+        # locutor anunciando en vez de a alguien que empieza a contar un cuento.
+        titulo = _titulo_dicho(story)
+        if titulo:
+            trozos += [prompts_voz.APERTURA, prompts_voz.COLCHON_INICIAL, titulo]
+
         for i, escena in enumerate(story.scenes):
             etiqueta = prompts_voz.etiqueta_de_escena(
                 escena.beat, escena.emotion, es_primera=(i == 0)
             )
             if etiqueta:
                 trozos.append(etiqueta)
-            if i == 0:
+            # El colchón va UNA vez, delante de lo primero que se dice: es para que el
+            # modelo no arranque encima de la primera consonante, y eso pasa en el
+            # arranque de la toma, no en cada frase.
+            if i == 0 and not titulo:
                 trozos.append(prompts_voz.COLCHON_INICIAL)
             trozos.append(_limpio(escena.narration))
 
@@ -175,6 +200,29 @@ class StoryNarrator:
         audio, marcas = await self._toma_continua(pedido)
 
         desde = 0.0
+        if titulo:
+            # Si el título no se puede ubicar en la alineación, se sigue sin él: el
+            # cuento entero ya está grabado y perderlo por la placa sería tirar el
+            # trabajo pagado. El render vuelve solo a la placa muda.
+            try:
+                hasta = marcas.fin_de(titulo)
+            except ValueError as e:
+                logger.warning("No se pudo ubicar el título en el audio (%s): la placa va muda.", e)
+            else:
+                ruta = destino / "titulo.wav"
+                ruta.write_bytes(_recortar(audio, desde, hasta))
+                story.title_audio = [
+                    AudioTrack(
+                        path=str(ruta),
+                        text=story.metadata.title or "",
+                        duration_s=round(hasta - desde, 3),
+                        kind=AudioKind.NARRATION,
+                        character_id=None,
+                        voice_id=self._voz.provider_voice_id or "",
+                    )
+                ]
+                desde = hasta
+
         for escena in story.scenes:
             hasta = marcas.fin_de(_limpio(escena.narration))
             ruta = destino / f"escena_{escena.index:02d}_narracion.wav"
@@ -224,6 +272,11 @@ class StoryNarrator:
         pasa, se pierde el cuento entero, así que el guardián importa más, no menos.
         """
         audio, marcas = b"", Alineacion([], [])
+        #: La mejor toma descartada SÓLO por pronunciación. Si se agotan los intentos
+        #: se usa ésta: un cuento entero que dice "Nino" en la primera palabra es
+        #: peor que uno que dice "Dino", pero es muchísimo mejor que ningún cuento.
+        de_reserva: tuple[bytes, Alineacion] | None = None
+
         for intento in range(1, INTENTOS_DE_TOMA + 1):
             audio, marcas = await con_reintentos(
                 lambda: self._provider.synthesize_aligned(  # type: ignore[attr-defined]
@@ -240,12 +293,16 @@ class StoryNarrator:
             duracion = duracion_de_wav(audio) if audio else 0.0
             ataque = ataque_ms(audio) if audio else 0.0
             if _toma_entera(pedido, duracion) and ataque >= ATAQUE_MINIMO_MS:
-                return audio, marcas
-            motivo = (
-                f"le falta el final (dura {duracion:.1f}s)"
-                if not _toma_entera(pedido, duracion)
-                else f"nace cortada: {ataque:.0f} ms antes de la primera palabra"
-            )
+                if not (mal := await self._mal_dicha(audio, pedido)):
+                    return audio, marcas
+                motivo = mal
+                de_reserva = de_reserva or (audio, marcas)
+            else:
+                motivo = (
+                    f"le falta el final (dura {duracion:.1f}s)"
+                    if not _toma_entera(pedido, duracion)
+                    else f"nace cortada: {ataque:.0f} ms antes de la primera palabra"
+                )
             logger.warning(
                 "La toma del cuento entero %s. Se pide de nuevo (%s de %s).",
                 motivo, intento, INTENTOS_DE_TOMA,
@@ -254,10 +311,58 @@ class StoryNarrator:
                 olvidar(pedido, voice_id=self._voz.provider_voice_id,
                         speed=self._voz.speed, audio_format="wav")
 
+        if de_reserva is not None:
+            logger.warning(
+                "Las %s tomas se entendieron mal en la primera palabra (%s). Se usa la "
+                "primera: el cuento sale igual.",
+                INTENTOS_DE_TOMA, motivo,
+            )
+            return de_reserva
+
         raise ProviderError(
             f"La narración del cuento entero llegó cortada {INTENTOS_DE_TOMA} veces "
             f"seguidas: {motivo}."
         )
+
+    async def _mal_dicha(self, audio: bytes, pedido: str) -> str:
+        """Por qué la toma NO dice lo que decía el texto, o cadena vacía si está bien.
+
+        **Verifica la primera palabra, que es donde falló las tres veces.** Pablo lo
+        escuchó sobre el mismo nombre: primero *"nano"*, después *"Maqueno"*, y el
+        texto siempre decía "Dino". La duración y el silencio inicial se pueden medir
+        con la stdlib; que la D se haya convertido en N, no — el WAV es idéntico de
+        sano. La única forma de saberlo es escuchar la toma, y para eso está el
+        transcriptor.
+
+        Medido sobre 24 tomas de la misma frase (7-ago-2026), contando cuántas
+        arrancaron diciendo "Dino" de verdad:
+
+        | estabilidad | bien | lo que se entendió cuando falló |
+        |---|---|---|
+        | 0.3 | 4 de 8 | Patatendo, Lino, Vino, Nino |
+        | 0.5 | 5 de 8 | Podino, Unadino, Vino |
+        | 0.7 | 6 de 8 | Vino |
+
+        O sea que **la estabilidad no es la causa**: mejora la probabilidad y no la
+        arregla, ni siquiera en 0.7. Lo que sí sirve es que NO es determinista —la
+        misma frase pedida de nuevo sale bien— así que acá el reintento es un
+        reintento de verdad, a diferencia del de la toma que nacía cortada.
+
+        Si no hay transcriptor, o si transcribir falla, la toma pasa: un guardián que
+        no puede mirar no frena nada.
+        """
+        if self._transcriber is None:
+            return ""
+        try:
+            dicho = await self._transcriber.transcribe(audio)  # type: ignore[attr-defined]
+        except Exception as e:  # noqa: BLE001 — verificar es una mejora, no un requisito
+            logger.warning("No se pudo verificar la pronunciación (%s). La toma pasa.", e)
+            return ""
+
+        esperada, oida = _primera_palabra(pedido), _primera_palabra(dicho)
+        if not esperada or not oida or esperada == oida:
+            return ""
+        return f"se entiende '{oida}' donde el texto dice '{esperada}'"
 
     async def _narrar_dialogos(self, story: Story, destino: Path, personajes) -> None:
         """Los diálogos, que NO entran en la toma continua.
@@ -504,6 +609,38 @@ def para_decir(texto: str) -> str:
     Termina agregando `COLCHON_FINAL` — ver por qué ahí abajo.
     """
     return _limpio(texto) + COLCHON_FINAL
+
+
+def _primera_palabra(texto: str) -> str:
+    """La primera palabra que se DICE, en minúsculas y sin tildes.
+
+    Saca las etiquetas de actuación —`[warmly]` no se pronuncia— y toda la puntuación,
+    incluida la coma del colchón inicial. De `"[warmly] [slows down] , Dino, el
+    dinosaurio bebé"` devuelve `"dino"`.
+
+    Sin tildes porque la transcripción y el guion no siempre coinciden en acentuar, y
+    una tilde de diferencia no es una palabra mal dicha.
+    """
+    sin_etiquetas = re.sub(r"\[[^\]]*\]", " ", texto)
+    plano = "".join(
+        c for c in unicodedata.normalize("NFD", sin_etiquetas.lower())
+        if unicodedata.category(c) != "Mn"
+    )
+    palabras = re.findall(r"[a-z0-9ñ]+", plano)
+    return palabras[0] if palabras else ""
+
+
+def _titulo_dicho(story: Story) -> str:
+    """El título tal como entra en la toma, o vacío si la historia no tiene.
+
+    Lleva punto al final aunque el título no lo tenga: sin él, el modelo lo pega con
+    la primera frase del cuento y se pierde el respiro entre *cómo se llama* y *cómo
+    empieza*. Un punto no se pronuncia — es la misma herramienta que el colchón final.
+    """
+    titulo = _limpio(story.metadata.title or "")
+    if not titulo:
+        return ""
+    return titulo if titulo[-1] in ".!?…" else titulo + "."
 
 
 def _limpio(texto: str) -> str:

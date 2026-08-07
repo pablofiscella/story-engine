@@ -131,6 +131,29 @@ class CachedImageProvider(_Base):
         ruta.write_bytes(img)
         return img
 
+    def olvidar(
+        self,
+        prompt: str,
+        *,
+        reference_images: list[bytes] | None = None,
+        width: int = 1024,
+        height: int = 1024,
+    ) -> bool:
+        """Tirá esta imagen: salió mal y no quiero que me la devuelvas de nuevo.
+
+        La usa el verificador cuando encuentra una anatomía rota. Sin esto, pedir la
+        imagen otra vez devuelve **exactamente la misma imagen mala** y el reintento no
+        reintenta nada: es el mismo agujero que ya se tapó del lado de la voz, cuando
+        el guardián de tomas cortadas pedía tres veces la toma cacheada y fallaba las
+        tres.
+
+        Que el prompt de reintento lleve además un bloque de corrección lo haría
+        innecesario casi siempre —cambia la clave— pero *casi siempre* no alcanza para
+        algo que corre solo diez veces por día.
+        """
+        refs = [hashlib.sha256(r).hexdigest() for r in (reference_images or [])]
+        return self._olvidar("img", prompt, width, height, *refs)
+
 
 class CachedVoiceProvider(_Base):
     """Un `VoiceProvider` que no vuelve a pagar una toma que ya sintetizó.

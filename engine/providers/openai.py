@@ -21,6 +21,7 @@ from engine.core.exceptions import ProviderRefusedError, ProviderUnavailableErro
 _CHAT = "https://api.openai.com/v1/chat/completions"
 _IMAGES = "https://api.openai.com/v1/images/generations"
 _IMAGE_EDITS = "https://api.openai.com/v1/images/edits"
+_TRANSCRIPTIONS = "https://api.openai.com/v1/audio/transcriptions"
 
 #: Códigos que valen un reintento: el problema es del otro lado y es pasajero.
 _TRANSITORIOS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
@@ -43,6 +44,26 @@ CALIDADES = ("low", "medium", "high")
 #: dos, no algo que se herede del default de la API.
 CALIDAD_POR_DEFECTO = "low"
 
+#: Con qué modelo se MIRA una imagen ya generada, para verificarla.
+#:
+#: No es el mismo que la genera ni el que escribe: revisar es otro trabajo. Se eligió
+#: midiendo contra los tres errores de anatomía reales del lote del 7-ago-2026 (una
+#: mano de más y dos casos de patas de más, sobre 48 imágenes):
+#:
+#: | modelo   | los 3 defectos | falsos positivos sobre 5 sanas |
+#: |----------|----------------|--------------------------------|
+#: | gpt-4o   | 0 de 3         | 0 |
+#: | gpt-4.1  | 0 de 3         | 0 |
+#: | gpt-5.2  | 1 de 3         | 0 |
+#:
+#: `gpt-4o` contesta *"4 extremidades, anatomía ok"* en las tres imágenes rotas: no
+#: discrimina nada. `gpt-5.2` es el único que encuentra algo, y sin equivocarse nunca
+#: sobre una imagen sana — que es lo que permite rehacer sin miedo.
+MODELO_DE_VISION = "gpt-5.2"
+
+#: Con qué modelo se ESCUCHA una toma ya grabada, para verificar la pronunciación.
+MODELO_DE_TRANSCRIPCION = "gpt-4o-transcribe"
+
 
 class OpenAIProvider:
     """Texto e imagen contra la API de OpenAI."""
@@ -53,6 +74,8 @@ class OpenAIProvider:
         *,
         text_model: str = "gpt-4o-mini",
         image_model: str = "gpt-image-2",
+        vision_model: str = MODELO_DE_VISION,
+        transcription_model: str = MODELO_DE_TRANSCRIPCION,
         image_quality: str = CALIDAD_POR_DEFECTO,
         timeout: int = 90,
     ) -> None:
@@ -63,6 +86,8 @@ class OpenAIProvider:
         self._key = api_key
         self._text_model = text_model
         self._image_model = image_model
+        self._vision_model = vision_model
+        self._transcription_model = transcription_model
         self._image_quality = image_quality
         self._timeout = timeout
 
@@ -100,6 +125,67 @@ class OpenAIProvider:
             cuerpo["max_tokens"] = max_tokens
 
         data = await self._post(_CHAT, cuerpo)
+        try:
+            return data["choices"][0]["message"]["content"] or ""
+        except (KeyError, IndexError) as e:
+            raise ProviderUnavailableError(f"Respuesta inesperada de OpenAI: {e}") from e
+
+    async def transcribe(self, audio: bytes, *, language: str = "es") -> str:
+        """Lo que se ENTIENDE del audio.
+
+        Lo usa el guardián de pronunciación del narrador: es la única forma de saber
+        si la toma dijo "Dino" o dijo "Nino", porque el archivo suena igual de sano en
+        los dos casos.
+
+        Se declara `audio/wav` en el multipart: mandarlo como `image/png` funciona
+        —OpenAI mira la extensión del nombre— pero es de las cosas que andan hasta que
+        alguien del otro lado deja de ser amable.
+        """
+        from engine.providers.multipart import build
+
+        campos = {"model": self._transcription_model, "language": language,
+                  "response_format": "json"}
+        ctype, cuerpo = build(
+            campos, [("file", "toma.wav", audio)], content_type="audio/wav"
+        )
+        data = await asyncio.to_thread(self._post_raw, _TRANSCRIPTIONS, cuerpo, ctype)
+        return str(data.get("text", ""))
+
+    async def inspect_image(
+        self,
+        prompt: str,
+        images: list[bytes],
+        *,
+        system: str | None = None,
+    ) -> str:
+        """Le pregunta a un modelo de VISIÓN qué ve en estas imágenes.
+
+        Es el mismo endpoint de chat que el texto: la imagen viaja como `data:` URL
+        adentro del mensaje. Se pide `detail: high` a propósito — con `low` la imagen
+        se reduce a 85 tokens y contar patas se vuelve imposible.
+
+        `temperature` no se manda: los modelos de razonamiento sólo aceptan el valor
+        por defecto y este pedido es una medición, no una redacción.
+        """
+        contenido: list[dict[str, object]] = [{"type": "text", "text": prompt}]
+        for raw in images:
+            contenido.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{base64.b64encode(raw).decode()}",
+                        "detail": "high",
+                    },
+                }
+            )
+        mensajes: list[dict[str, object]] = []
+        if system:
+            mensajes.append({"role": "system", "content": system})
+        mensajes.append({"role": "user", "content": contenido})
+
+        data = await self._post(
+            _CHAT, {"model": self._vision_model, "messages": mensajes}
+        )
         try:
             return data["choices"][0]["message"]["content"] or ""
         except (KeyError, IndexError) as e:

@@ -126,6 +126,83 @@ class FakeImageProvider:
         return _png_marcado(self.PNG, len(self.llamadas))
 
 
+#: Una respuesta de verificación sin ningún reparo. Es la de la mayoría de las
+#: imágenes, así que es el default: los tests declaran lo que sale MAL.
+VISION_OK = (
+    "que_veo: cada dinosaurio tiene dos patas traseras y dos delanteras\n"
+    "anatomia: ok\n"
+    "cual: \n"
+    "personajes: 2\n"
+    "dia: si\n"
+    "texto: no\n"
+    "objeto: si"
+)
+
+
+class FakeVisionProvider:
+    """Contesta lo que se le programó, en el formato que el verificador parsea.
+
+    Recibe una lista de respuestas y las va devolviendo en orden, repitiendo la última
+    cuando se acaban. Eso permite escribir el caso que importa —"la primera vez sale
+    con seis patas y la segunda bien"— que es justo lo que no se puede probar contra
+    la API real sin pagar y sin suerte.
+    """
+
+    def __init__(self, respuestas: list[str] | None = None) -> None:
+        self.respuestas = list(respuestas) if respuestas else [VISION_OK]
+        self.llamadas: list[dict] = []
+
+    async def inspect_image(
+        self, prompt: str, images: list[bytes], *, system: str | None = None
+    ) -> str:
+        self.llamadas.append({"prompt": prompt, "imagenes": len(images), "system": system})
+        i = min(len(self.llamadas) - 1, len(self.respuestas) - 1)
+        return self.respuestas[i]
+
+
+class FakeTranscriber:
+    """Devuelve lo que se le programó como "lo que se entendió" de cada toma.
+
+    Sirve para probar el guardián de pronunciación sin pagar TTS y sin depender de la
+    suerte: el error real —que el modelo diga "Nino" donde el texto dice "Dino"— sale
+    una vez de cada dos, así que reproducirlo contra la API sería tirar una moneda.
+    """
+
+    def __init__(self, textos: list[str] | None = None) -> None:
+        self.textos = list(textos) if textos else []
+        self.llamadas = 0
+
+    async def transcribe(self, audio: bytes, *, language: str = "es") -> str:
+        self.llamadas += 1
+        if not self.textos:
+            return ""
+        return self.textos[min(self.llamadas - 1, len(self.textos) - 1)]
+
+
+class TranscriptorQueCae:
+    """Transcribir falla. La toma tiene que pasar igual."""
+
+    def __init__(self) -> None:
+        self.llamadas = 0
+
+    async def transcribe(self, audio: bytes, *, language: str = "es") -> str:
+        self.llamadas += 1
+        raise ProviderUnavailableError("503 del transcriptor.")
+
+
+class VisionQueCae:
+    """La visión falla siempre. El cuento tiene que salir igual."""
+
+    def __init__(self) -> None:
+        self.llamadas = 0
+
+    async def inspect_image(
+        self, prompt: str, images: list[bytes], *, system: str | None = None
+    ) -> str:
+        self.llamadas += 1
+        raise ProviderUnavailableError("503 del proveedor de visión.")
+
+
 #: Igual que en el proveedor real: lo que va entre corchetes se actúa, no se lee.
 _ETIQUETA = re.compile(r"\[[^\]]{1,300}\]")
 

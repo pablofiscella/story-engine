@@ -158,9 +158,15 @@ class ShortRenderer:
         tramos: list[str] = []
 
         # --- el título, sobre la primera imagen ---------------------------------
+        # La placa dura lo que tarda en DECIRSE el título, con `TITULO_S` de piso para
+        # que se alcance a leer. Antes duraba dos segundos fijos y el video arrancaba
+        # con dos segundos de silencio mirando un cartel: Pablo, mirando el segundo
+        # lote, *"aparece el título pero no habla en ningún video"*.
+        dur_titulo = sum(t.duration_s for t in story.title_audio)
+        titulo_s = max(TITULO_S, dur_titulo)
         # También con el margen del cruce: si no, el título se ve 0.4s menos.
         entradas += [
-            "-loop", "1", "-t", f"{TITULO_S + TRANSICION_S:.3f}",
+            "-loop", "1", "-t", f"{titulo_s + TRANSICION_S:.3f}",
             "-i", story.scenes[0].image_path,
         ]
         placa = self._texto(
@@ -210,8 +216,13 @@ class ShortRenderer:
         tramos.append("[cierre]")
 
         # --- el audio -------------------------------------------------------------
-        pistas = [t.path for e in story.scenes for t in e.audio]
-        pausas = [pausa] * len(pistas)
+        # El título primero, si se narró. Lo que sobra de placa —cuando el título se
+        # dice más rápido que el piso de lectura— se rellena con silencio detrás, para
+        # que la primera escena entre justo cuando la imagen cambia.
+        pistas = [t.path for t in story.title_audio]
+        pausas = [titulo_s - dur_titulo] if story.title_audio else []
+        pistas += [t.path for e in story.scenes for t in e.audio]
+        pausas += [pausa] * (len(pistas) - len(pausas))
         pistas += [t.path for t in story.closing_audio]
         pausas += [0.0] * len(story.closing_audio)
         if pausas:
@@ -224,22 +235,29 @@ class ShortRenderer:
             # pausa es el aire que queda al terminar de hablar, no antes de empezar.
             filtros.append(f"[{base + j}:a]apad=pad_dur={pausa:.3f}[a{j}]")
 
-        cadena_v = _encadenar(tramos, [TITULO_S, *duraciones])
+        cadena_v = _encadenar(tramos, [titulo_s, *duraciones])
         # El fundido al negro arranca cuando arranca la cola: se apaga mientras suena
         # el último silencio, en vez de cortar en la última sílaba.
         # Cada cruce consume `TRANSICION_S` y cada tramo se generó con ese margen de
         # más: los dos efectos se cancelan y el video dura exactamente lo que el audio.
-        total = TITULO_S + sum(duraciones) + cierre_s
+        total = titulo_s + sum(duraciones) + cierre_s
         arranque = max(0.0, total - COLA_FINAL_S)
         cadena_v += f";[vcrudo]fade=t=out:st={arranque:.3f}:d={COLA_FINAL_S}[video]"
 
+        # Cuando el título se narra, su pista YA ocupa la placa y no hay que anteponer
+        # nada. El silencio de antes existía porque la placa era muda: meterlo igual
+        # correría el cuento entero y la última escena se quedaría sin imagen.
+        placa_muda = (
+            ""
+            if story.title_audio
+            else f"[unido]adelay={int(titulo_s * 1000)}|{int(titulo_s * 1000)}[conplaca];"
+        )
+        entrada_loudness = "[unido]" if story.title_audio else "[conplaca]"
         cadena_a = (
             "".join(f"[a{j}]" for j in range(len(pistas)))
             + f"concat=n={len(pistas)}:v=0:a=1[unido];"
-            # El título no lleva voz: se le antepone el silencio para que la primera
-            # narración caiga justo cuando termina la placa.
-            f"[unido]adelay={int(TITULO_S * 1000)}|{int(TITULO_S * 1000)}[conplaca];"
-            f"[conplaca]{LOUDNESS}[audio]"
+            + placa_muda
+            + f"{entrada_loudness}{LOUDNESS}[audio]"
         )
         filtro = ";".join([*filtros, cadena_v, cadena_a])
 

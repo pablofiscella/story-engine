@@ -89,6 +89,20 @@ class Story(EngineModel):
     scenes: list[Scene] = Field(
         default_factory=list, description="Las escenas escritas. Desde WRITTEN en adelante."
     )
+    title_audio: list[AudioTrack] = Field(
+        default_factory=list,
+        description=(
+            "El título, narrado. Va aparte de las escenas porque no es parte del "
+            "cuento: es cómo se ANUNCIA.\n\n"
+            "Existe porque la placa del título se veía y nadie la decía. Pablo, "
+            "mirando el segundo lote (7-ago-2026): *'aparece el título pero no habla "
+            "en ningún video'*. El render dibujaba la placa dos segundos y le "
+            "anteponía dos segundos de silencio al audio — o sea que el video "
+            "arrancaba mudo mirando un cartel.\n\n"
+            "Vacía cuando la narración no se grabó de una sola toma: ahí el render "
+            "vuelve a la placa muda de duración fija, que es como funcionaba antes."
+        ),
+    )
     closing_audio: list[AudioTrack] = Field(
         default_factory=list,
         description=(

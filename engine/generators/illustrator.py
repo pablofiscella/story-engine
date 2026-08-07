@@ -47,6 +47,14 @@ class SceneIllustrator:
         self._provider = provider
         self._width = width
         self._height = height
+        #: Las anclas de la última corrida, para poder rehacer una escena suelta.
+        #:
+        #: Se guardan porque el verificador rehace DESPUÉS, cuando `illustrate` ya
+        #: terminó, y una escena rehecha sin las anclas originales sale con otro
+        #: personaje: se arreglaría la anatomía rompiendo la consistencia, que es el
+        #: problema más caro de los dos.
+        self._anclas: dict[str, bytes] = {}
+        self._estilo_ref: bytes | None = None
 
     async def illustrate(self, story: Story, dest_dir: str | Path) -> Story:
         """Genera la ilustración de cada escena y deja la historia en ILLUSTRATED.
@@ -86,10 +94,36 @@ class SceneIllustrator:
         if resto:
             await asyncio.gather(*(_una(e) for e in resto))
 
+        self._anclas, self._estilo_ref = anclas, estilo_ref
         if story.status is StoryStatus.WRITTEN:
             story.advance_to(StoryStatus.ILLUSTRATED)
         story.metadata.touch()
         return story
+
+    async def rehacer(self, escena, story: Story, *, correccion: str = "") -> bytes:
+        """Vuelve a dibujar UNA escena, con las mismas anclas y una corrección encima.
+
+        La usa el verificador cuando una imagen sale con la anatomía rota o con un
+        personaje de más. Rehacer la escena sola —y no el cuento— es lo que vuelve
+        barata la corrección: con el caché puesto son US$0,005 contra los US$0,03 del
+        short entero.
+
+        `correccion` no es decorativo: pedir la MISMA imagen otra vez es lo que ya
+        falló con las tomas de voz que nacían cortadas. Al modelo hay que darle una
+        orden distinta, y la orden distinta es el error que se vio.
+        """
+        estilo_ref = self._estilo_ref
+        if estilo_ref is None:
+            estilo_ref = _leer(story.style.reference_image)
+        img = await self._generar(
+            escena,
+            estilo_ref,
+            self._anclas,
+            image_prompts.negative(story.style),
+            correccion=correccion,
+        )
+        _guardar(img, Path(escena.image_path).parent, escena, story)
+        return img
 
     # ------------------------------------------------------------------------
     def _separar(self, story: Story):
@@ -110,7 +144,13 @@ class SceneIllustrator:
         return fijan, resto
 
     async def _generar(
-        self, escena, estilo_ref: bytes | None, anclas: dict[str, bytes], negativo: str
+        self,
+        escena,
+        estilo_ref: bytes | None,
+        anclas: dict[str, bytes],
+        negativo: str,
+        *,
+        correccion: str = "",
     ) -> bytes:
         """Una ilustración, con las referencias que correspondan.
 
@@ -131,8 +171,16 @@ class SceneIllustrator:
             raise DomainError(
                 f"La escena {escena.index} no tiene prompt de imagen: la compone el escritor."
             )
+        if correccion:
+            prompt = f"{prompt} {correccion}"
         if negativo:
             prompt = f"{prompt} EVITAR: {negativo}"
+
+        # Rehacer contra un caché devuelve la MISMA imagen que se acaba de rechazar.
+        # La corrección ya cambia el prompt —y con él la clave— pero dos reintentos
+        # con la misma corrección volverían a chocar: se le pide que la tire.
+        if correccion and (olvidar := getattr(self._provider, "olvidar", None)):
+            olvidar(prompt, reference_images=refs or None, width=self._width, height=self._height)
 
         # Un 500 de OpenAI en la escena 3 tiraba abajo la historia entera y las dos
         # imágenes ya pagadas. Es transitorio: se insiste antes de darlo por perdido.
