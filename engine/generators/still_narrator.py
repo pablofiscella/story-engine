@@ -154,8 +154,7 @@ class StillNarrator:
         if cierre := " ".join(_limpio(t) for t in (story.moral, story.closing_question) if t):
             story.closing_audio = [await pedir("cierre", cierre)]
 
-        if story.status is not StoryStatus.NARRATED:
-            story.advance_to(StoryStatus.NARRATED)
+        _marcar_narrada(story)
         story.metadata.touch()
         return cuerpo
 
@@ -233,6 +232,29 @@ class StillNarrator:
 #: Da ~13 caracteres por segundo. Es una estimación y se usa sólo como PISO —para
 #: detectar la toma partida al medio—, nunca para calcular una duración: eso se mide.
 _CARACTERES_POR_SEGUNDO = 13.0
+
+
+def _marcar_narrada(story: Story) -> None:
+    """Deja la historia en NARRATED, y no rompe si ya venía más adelante.
+
+    **Volver a narrar un devocional YA renderizado es normal acá**, y ésa es la
+    diferencia con los cuentos: se arregla la dirección de voz o se cambia la voz, y hay
+    que rehacer sólo el audio de una pieza que ya existe. La máquina de estados va en un
+    solo sentido a propósito —no se puede renderizar lo que no se narró— pero eso es un
+    piso, no un techo: que el rótulo esté más adelante no es motivo para tirar diez
+    minutos de TTS recién pagado.
+
+    Pasó el 8-ago-2026, con el audio ya generado y guardado: `InvalidStateTransitionError:
+    No se puede pasar de 'rendered' a 'narrated'`. El audio estaba bien; lo que estaba
+    mal era romper por la etiqueta.
+    """
+    if story.status in (StoryStatus.NARRATED, StoryStatus.RENDERED, StoryStatus.PUBLISHED):
+        logger.info(
+            "La historia ya estaba en '%s': se rehizo el audio y se deja el estado como "
+            "está.", story.status.value,
+        )
+        return
+    story.advance_to(StoryStatus.NARRATED)
 
 
 def caracteres_de(story: Story) -> int:

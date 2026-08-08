@@ -188,6 +188,9 @@ class StillRenderer:
              "-c:a", "aac", "-b:a", "128k", "-shortest", str(salida)],
             check=True, capture_output=True,
         )
+        # Sólo si venía de narrar. Re-renderizar algo ya renderizado es normal en este
+        # formato —se cambia la imagen o el texto de pantalla sin tocar el audio— y no
+        # tiene por qué romper por el rótulo.
         if story.status is StoryStatus.NARRATED:
             story.advance_to(StoryStatus.RENDERED)
         story.metadata.touch()
