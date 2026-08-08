@@ -38,6 +38,7 @@ from engine.generators.script_inspector import (
     _reparos,
     abre_saludando,
     frases_repetidas,
+    palabras_de_muletilla,
     pide_un_acto,
 )
 from engine.providers.fake import (
@@ -209,6 +210,24 @@ def test_con_dos_palabras_el_guardian_acusa_al_idioma_y_con_cuatro_no_ve_nada() 
     """
     assert len(frases_repetidas(GUION_REAL, n=2)) == 10
     assert frases_repetidas(GUION_REAL, n=4) == []
+
+
+def test_el_guardian_se_afloja_cuando_hay_mas_texto() -> None:
+    """La calibración depende de CUÁNTO guion hay, y esto lo fija con números.
+
+    Medido el 8-ago-2026 sobre los dos devocionales reales: con `n` fijo en 3, el guion
+    largo (1.248 palabras en 8 escenas de ~156) devuelve **55 muletillas** —"a moment
+    to", "help me to", "thank you for": armazón del inglés— y el verificador manda a
+    reescribir siete escenas de ocho, dos veces, sin arreglar nada. Un guardián que
+    acusa todo no acusa nada, y encima cada reescritura son dos llamadas a dos modelos.
+
+    Dos pasajes de 156 palabras comparten un trigrama sin que nadie haya repetido nada;
+    dos de 34, no.
+    """
+    assert palabras_de_muletilla(344) == 3  # el guion corto real
+    assert palabras_de_muletilla(1248) == 5  # el guion largo real
+    # Y con el `n` que le toca, el guion corto sigue dando exactamente las dos de antes.
+    assert len(frases_repetidas(GUION_REAL)) == 2
 
 
 def test_el_guion_real_no_abre_saludando() -> None:

@@ -565,10 +565,44 @@ def _reparos(campos: dict[str, str], narraciones: list[str]) -> list[ReparoDeGui
     return reparos
 
 
+#: A partir de cuántas palabras de guion hace falta exigir frases más largas.
+#:
+#: **El número de choques accidentales no depende del guion: depende de cuánto texto
+#: haya.** Dos pasajes de 160 palabras comparten un trigrama de armazón inglés sin que
+#: nadie haya repetido nada; dos de 35, no. Medido el 8-ago-2026 sobre los dos
+#: devocionales reales, con `frases_repetidas` a distinto `n`:
+#:
+#: | guion | palabras | n=3 | n=4 | n=5 | n=6 |
+#: |---|---:|---:|---:|---:|---:|
+#: | corto (10 escenas de ~34 pal.) | 344 | **2** | 0 | 0 | 0 |
+#: | largo (8 escenas de ~156 pal.) | 1.248 | 55 | 20 | **5** | 0 |
+#:
+#: Con `n` fijo en 3, el guion largo devuelve 55 muletillas —"a moment to", "help me
+#: to", "thank you for": armazón del idioma— y el verificador manda a reescribir siete
+#: escenas de ocho, dos veces, sin arreglar nada. Un guardián que acusa todo no acusa
+#: nada, y encima cuesta plata: cada reescritura son dos llamadas a dos modelos.
+#:
+#: Los dos extremos están MEDIDOS; la banda del medio es interpolación, no medición, y
+#: hay que decirlo. Se afina cuando haya un guion de ese tamaño para mirar.
+_UMBRALES_DE_LARGO: tuple[tuple[int, int], ...] = ((1000, 5), (600, 4))
+
+
+def palabras_de_muletilla(total_palabras: int) -> int:
+    """Cuántas palabras seguidas hacen una muletilla, según cuánto guion haya."""
+    for desde, n in _UMBRALES_DE_LARGO:
+        if total_palabras >= desde:
+            return n
+    return PALABRAS_DE_MULETILLA
+
+
 def frases_repetidas(
-    narraciones: list[str], n: int = PALABRAS_DE_MULETILLA
+    narraciones: list[str], n: int | None = None
 ) -> list[tuple[str, list[int]]]:
     """Las frases de `n` palabras que aparecen en más de una escena.
+
+    `n` sale de `palabras_de_muletilla()` si no se pasa: un devocional de nueve minutos
+    tiene cuatro veces más texto que uno de dos y medio, y con el mismo `n` el guardián
+    se vuelve inútil. Ver `_UMBRALES_DE_LARGO` para los números medidos.
 
     Es `aperturas_repetidas()` llevado adentro de la frase. Aquélla compara sólo las
     TRES PRIMERAS palabras de cada escena, y sobre el devocional real del 7-ago-2026
@@ -595,9 +629,12 @@ def frases_repetidas(
     Determinista y pura, como los guardianes del storyboard: no pregunta, cuenta.
     Devuelve `(frase, [escenas])` ordenado por dónde aparece primero.
     """
+    palabras_por_escena = [_palabras(x) for x in narraciones]
+    if n is None:
+        n = palabras_de_muletilla(sum(len(p) for p in palabras_por_escena))
+
     vistas: dict[str, list[int]] = {}
-    for i, narracion in enumerate(narraciones):
-        palabras = _palabras(narracion)
+    for i, palabras in enumerate(palabras_por_escena):
         for j in range(len(palabras) - n + 1):
             grupo = palabras[j : j + n]
             if sum(1 for p in grupo if p not in _FUNCION) < CONTENIDO_MINIMO:

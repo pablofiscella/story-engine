@@ -42,10 +42,38 @@ from engine.core.enums import Language
 #: **Va en CADA bloque, no sólo en el primero.** Para el modelo de voz cada pedido es
 #: un texto nuevo: sin la dirección, el bloque 2 de un devocional de cuarenta minutos
 #: vuelve a leer como un noticiero.
+#:
+#: **TIENE QUE SER CORTA, y eso costó un devocional entero.** La primera versión tenía
+#: 235 caracteres y `eleven_v3` **la leyó en voz alta**. Transcribiendo el WAV del
+#: título generado el 8-ago-2026:
+#:
+#:     "Calm, low, unhurried voice, speaking quietly to one person sitting close by,
+#:      never to an audience. Long pauses, never excited, never preaching.
+#:      Before this day begins. A morning prayer for a tired heart."
+#:
+#: Los primeros catorce segundos del video eran el narrador leyendo la dirección de
+#: escena. **No lo vio ningún test, ni el guardián de toma cortada** —el audio llegó
+#: entero, sólo que decía de más— ni el verificador de guion, que mira el texto y no el
+#: audio. Se encontró **transcribiendo el WAV**, que es el único lugar donde se ve.
+#:
+#: La causa NO son los puntos adentro del corchete: se probó sacándolos y a 202
+#: caracteres seguía leyéndola. Es el LARGO. Medido el 8-ago-2026 con la misma frase de
+#: título y la misma voz, transcribiendo cada toma:
+#:
+#: | dirección | ¿la dice? | duración del título |
+#: |---:|---|---:|
+#: | 35 chars | no, la actúa | 5,9 s |
+#: | 69 chars | no, la actúa | 6,6 s |
+#: | **112 chars** | **no, la actúa** | **6,4 s** |
+#: | 202 chars | **la lee en voz alta** | 11,0 s |
+#: | 235 chars | **la lee en voz alta** | 20,9 s |
+#:
+#: `prompts.voz.DIRECCION`, la de los cuentos que lleva meses andando, tiene 164. El
+#: umbral está entre 164 y 202; ésta se queda en 112 para no vivir en el borde. Hay un
+#: test que la mide, porque es una constante que da ganas de alargar.
 DIRECCION_LARGA = (
-    "[Devotional prayer read aloud for adults, late at night or at first light. "
-    "Calm, low, unhurried voice. Speaking quietly to ONE person sitting close by, "
-    "never to an audience. Long pauses. Never excited, never preaching.]"
+    "[Devotional prayer read aloud for adults, calm low unhurried voice, "
+    "long pauses, never excited, never preaching]"
 )
 
 _IDIOMA: dict[Language, str] = {

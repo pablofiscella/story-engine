@@ -52,6 +52,8 @@ from engine.generators.still_narrator import (
     StillNarrator,
     caracteres_de,
 )
+from engine.prompts.devocional import DIRECCION_LARGA
+from engine.prompts.voz import DIRECCION as DIRECCION_DE_CUENTOS
 from engine.providers.fake import FakeVoiceProvider
 from engine.render.still import COLA_DEL_TITULO_S, StillRenderer
 
@@ -196,6 +198,26 @@ def test_el_tope_de_90s_no_mueve_a_los_cuentos(
     )
     assert len(plan.scenes) == 6
     assert all(s.duration_s <= 8.0 for s in plan.scenes)
+
+
+def test_la_direccion_de_voz_es_corta_o_el_narrador_la_LEE() -> None:
+    """El defecto más caro del 8-ago-2026, y el único que sólo se vio transcribiendo.
+
+    Con 235 caracteres, `eleven_v3` leyó la dirección de escena en voz alta: los
+    primeros catorce segundos del devocional eran el narrador diciendo *"calm, low,
+    unhurried voice, speaking quietly to one person…"*. No lo vio ningún test, ni el
+    guardián de toma cortada (el audio llegó entero, sólo que decía de más), ni el
+    verificador de guion (mira el texto, no el audio).
+
+    Medido con la misma frase y la misma voz: hasta 112 caracteres la actúa; con 202 y
+    con 235 la lee. La de los cuentos, que anda hace meses, tiene 164. El tope de este
+    test es ése, y la constante se queda bastante más abajo.
+
+    No son los puntos adentro del corchete: se probó sacándolos y a 202 siguió
+    leyéndola. Es el largo.
+    """
+    assert len(DIRECCION_LARGA) <= len(DIRECCION_DE_CUENTOS)
+    assert DIRECCION_LARGA.startswith("[") and DIRECCION_LARGA.endswith("]")
 
 
 # --- El límite de 5.000 caracteres ------------------------------------------------

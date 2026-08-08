@@ -42,7 +42,7 @@ from engine.core.constants import (
     MIN_SCENE_DURATION_S,
     MIN_SCENES,
 )
-from engine.core.enums import Emotion, Language, NarrativeBeat, ShotType, SpiritualNeed
+from engine.core.enums import Language, NarrativeBeat, ShotType, SpiritualNeed
 from engine.core.exceptions import DomainError
 from engine.core.models.character import Character
 from engine.core.models.plan import ScenePlan, StoryPlan
