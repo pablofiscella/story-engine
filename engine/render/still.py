@@ -28,10 +28,15 @@ LAS TRES COSAS QUE SE VEN, y cuándo:
 
 **El medio va sin texto a propósito**, y es la diferencia más grande con el short. Un
 short lleva subtítulo permanente porque se mira sin sonido en un feed; esto se ESCUCHA
-—con los ojos cerrados, la mitad de las veces— y un cartel que cambia cada quince
-segundos es exactamente lo que impide que alguien se duerma con esto puesto. Los
-canales del nicho no ponen ni un subtítulo: **ninguno de los 14 sube subtítulos
-propios** (`caption: false` en los 14), dejan que YouTube los genere.
+—con los ojos cerrados, la mitad de las veces— y un cartel que cambia cada minuto es
+exactamente lo que impide que alguien se duerma con esto puesto.
+
+**Y es una decisión, no una medición: hay que decirlo así.** De los 14 canales se midió
+que **ninguno sube subtítulos propios** (`caption: false` en los 14), y eso NO es lo
+mismo — una pista de subtítulos que se prende y se apaga no dice nada sobre si el video
+lleva texto quemado en el cuadro. Sobre eso no hay dato. Si Pablo quiere el texto del
+devocional en pantalla, es agregar una capa más con el mismo `_texto()`: el tratamiento
+ya es el correcto y está resuelto acá abajo.
 
 Se hereda tal cual del short lo que ya se ganó ahí, porque son los mismos errores:
 

@@ -56,6 +56,7 @@ from engine.prompts.devocional import DIRECCION_LARGA
 from engine.prompts.voz import DIRECCION as DIRECCION_DE_CUENTOS
 from engine.providers.fake import FakeVoiceProvider
 from engine.render.still import COLA_DEL_TITULO_S, StillRenderer
+from engine.render.video import CONTORNO
 
 pytestmark = pytest.mark.anyio
 
@@ -358,8 +359,13 @@ async def test_el_titulo_se_va_y_la_invitacion_llega_al_final(
     """Los dos textos y sus ventanas, leídos del filtro que se le pasa a ffmpeg.
 
     El medio va SIN texto a propósito: esto se escucha, muchas veces con los ojos
-    cerrados, y un cartel que cambia cada quince segundos es lo que impide que alguien
-    se duerma con esto puesto. Ninguno de los 14 canales del nicho sube subtítulos.
+    cerrados. Es una DECISIÓN, no una medición — de los 14 canales se midió que ninguno
+    sube pista de subtítulos, y eso no dice nada sobre texto quemado en el cuadro.
+
+    Y el tratamiento del texto es el que Pablo eligió el 5-ago mirando el primer short
+    —*"sólo texto con borde negro"*, sin caja—: se reusa `CONTORNO` de `render/video.py`
+    en vez de inventar otro, que es la única forma de que los dos productos se vean de
+    la misma familia.
     """
     cuerpo = await StillNarrator(FakeVoiceProvider()).narrate(devocional_largo, tmp_path)
     # La imagen se arma ANTES de espiar: `_png` también invoca a ffmpeg, y el espía se
@@ -389,6 +395,13 @@ async def test_el_titulo_se_va_y_la_invitacion_llega_al_final(
     assert "gte(t," in filtro  # la invitación aparece tarde, no desde el principio
     # El cierre se ancla por donde TERMINA el bloque: la corrección del 7-ago-2026.
     assert "h*0.88-text_h" in filtro
+    # El tratamiento que eligió Pablo el 5-ago mirando el primer short —*"sólo texto con
+    # borde negro"*, sin caja—: se REUSA `CONTORNO` de `render/video.py` en vez de
+    # inventar otro. Es la única forma de que los dos productos se vean de la misma
+    # familia, y de que cambiarlo una vez lo cambie en los dos.
+    assert "fontcolor=white" in filtro
+    assert f"borderw={CONTORNO}" in filtro
+    assert "box=" not in filtro
 
 
 async def test_sin_imagen_no_se_invoca_a_ffmpeg(
