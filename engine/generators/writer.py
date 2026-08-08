@@ -86,6 +86,63 @@ class StoryWriter:
         story.metadata.touch()
         return story
 
+    async def reescribir(
+        self,
+        escena: Scene,
+        story: Story,
+        *,
+        correccion: str = "",
+        sistema: str | None = None,
+        anterior: str | None = None,
+    ) -> Scene:
+        """Vuelve a escribir UNA escena, con una corrección encima.
+
+        Es la hermana de `SceneIllustrator.rehacer`, y existe por la misma razón: el
+        verificador encuentra el problema en una escena y reescribir el guion entero
+        sería tirar todo lo que estaba bien. Devuelve la MISMA escena mutada, con la
+        narración y el subtítulo nuevos — el índice, el beat y la duración no se tocan,
+        así que el plan sigue valiendo.
+
+        `correccion` no es decorativo: **pedir lo mismo otra vez es lo que ya falló**
+        con las tomas de voz que nacían cortadas y con las imágenes de anatomía rota.
+        Al modelo hay que darle una orden realmente distinta, y la orden distinta es el
+        reparo concreto que se leyó en el intento anterior.
+        """
+        sistema = sistema or prompts.system_prompt(
+            language=story.metadata.language,
+            age_range=story.metadata.age_range,
+            value_moral=story.moral or "",
+        )
+        tope = _presupuesto(escena.duration_s)
+        pedido = prompts.scene_prompt(
+            escena,
+            characters=story.characters_by_id,
+            max_words=tope,
+            previous=anterior,
+            is_last=escena.index == len(story.scenes) - 1,
+        )
+        if correccion:
+            pedido = f"{pedido}\n\n{correccion}"
+
+        crudo = await con_reintentos(
+            lambda: self._provider.generate_text(pedido, system=sistema, temperature=0.8),
+            al_reintentar=lambda n, e: logger.warning(
+                "Escena %s: el proveedor de texto falló al reescribir (%s). Reintento %s.",
+                escena.index, e, n,
+            ),
+        )
+        texto = _limpiar(crudo)
+        if not texto:
+            raise ProviderError(
+                f"El escritor devolvió texto vacío al reescribir la escena {escena.index}."
+            )
+        if len(texto.split()) > tope:
+            texto = _recortar(texto, tope)
+
+        escena.narration = texto
+        escena.subtitle = _subtitulo(texto)
+        return escena
+
     # ------------------------------------------------------------------------
     async def _escribir_escena(
         self,
