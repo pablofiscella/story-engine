@@ -83,14 +83,27 @@ _ORDEN_DE_REPETICION: tuple[NarrativeBeat, ...] = (
 
 #: Encuadre por beat. Es otro criterio que el de los cuentos: acá el plano no sigue a
 #: un personaje —no hay personaje— sino a la distancia emocional. LA ESPERA se cuenta
-#: en plano general para que la figura se vea chica contra el cielo, y LA PROMESA en
-#: primer plano de la luz, que es lo más parecido a una cara que tiene este nicho.
+#: en plano general para que la figura se vea chica contra el cielo.
+#:
+#: **LA PROMESA NO PUEDE SER `CLOSE_UP`, y ésta es la corrección más cara del módulo.**
+#: Decía `CLOSE_UP` con el comentario *"primer plano de la luz, que es lo más parecido
+#: a una cara que tiene este nicho"*. La intención era buena y quedó donde nadie podía
+#: leerla: para el prompt de imagen `primer_plano` significa, textual, *"plano corto:
+#: las caras y las manos llenan el cuadro"*. Así que el 7-ago-2026 la escena del
+#: aprendizaje del primer devocional salió como el primer plano de una cara humana con
+#: la boca abierta — en el único nicho que se eligió PORQUE no tiene caras.
+#:
+#: Es el error de [[un-sistema-una-carpeta]] en chico, por tercera vez: una decisión
+#: tomada de un lado del motor que no cruza al otro. El primer plano de la luz se pide
+#: donde sí se puede pedir, que es la dirección de arte (`IMAGEN_COMUN[LESSON]` ya dice
+#: "a shaft of light breaking through clouds onto the ground, no figures"), no con un
+#: tipo de plano que significa otra cosa.
 PLANO_POR_BEAT: dict[NarrativeBeat, ShotType] = {
     NarrativeBeat.HOOK: ShotType.WIDE,
     NarrativeBeat.PROBLEM: ShotType.MEDIUM,
     NarrativeBeat.ATTEMPT: ShotType.MEDIUM,
     NarrativeBeat.FAILURE: ShotType.WIDE,
-    NarrativeBeat.LESSON: ShotType.CLOSE_UP,
+    NarrativeBeat.LESSON: ShotType.WIDE,
     NarrativeBeat.ENDING: ShotType.WIDE,
 }
 

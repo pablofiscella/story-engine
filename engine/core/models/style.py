@@ -63,6 +63,39 @@ class Style(EngineModel):
         ),
     )
 
+    #: Los dos campos que siguen nacieron el 7-ago-2026 MIRANDO las diez imágenes del
+    #: primer devocional narrado. Dos de las diez estaban rotas para el nicho: una era
+    #: un primer plano de una cara con la boca abierta, y otra la figura saltando con
+    #: los brazos en alto como una foto de banco. El verificador no marcó ninguna,
+    #: porque ninguna estaba "mal dibujada": salieron exactamente como se las pidió.
+    #:
+    #: Las dos causas estaban en el prompt de imagen del CUENTO, que es el único que
+    #: había: traduce la emoción a cara y postura ("boca abierta, ojos redondos",
+    #: "sonrisa grande, postura saltarina") y fija la continuidad en "día soleado y
+    #: despejado". Las dos reglas son correctas para un cuento —se escribieron porque
+    #: el cuento se nublaba solo— y son exactamente al revés de lo que necesita un
+    #: nicho cuya única propiedad es que NO HAY CARAS.
+    #:
+    #: Van en `Style` y no en un `if` del compositor porque esto es literalmente lo que
+    #: `Style` significa: cómo se ve. Y son opcionales con default de cuento, así que
+    #: los cuentos salen byte por byte iguales.
+    emotion_in_light: bool = Field(
+        default=False,
+        description=(
+            "Si la emoción se muestra en la LUZ y el encuadre en vez de en la cara y "
+            "la postura. Para estilos sin rostro (siluetas a contraluz, paisajes), "
+            "donde pedir una expresión facial obliga al modelo a dibujar una cara."
+        ),
+    )
+    continuity: str = Field(
+        default="",
+        description=(
+            "La regla de continuidad entre escenas. Vacío usa la del cuento ('día "
+            "soleado y despejado, la emoción sólo en la cara'), que es la que impide "
+            "que una historia infantil se nuble sola en el medio."
+        ),
+    )
+
     def prompt_fragment(self) -> str:
         """Fragmento de estilo para inyectar en el prompt de imagen.
 

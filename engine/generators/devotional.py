@@ -684,3 +684,41 @@ def profile_for(need: SpiritualNeed) -> DevotionalProfile:
     nombra una carga y no trae ninguna promesa.
     """
     return PROFILES[need]
+
+
+#: Cuántas palabras del arranque se comparan. Tres alcanza para cazar una muletilla
+#: ("I bring you this…") y es poco como para no acusar a dos escenas que apenas
+#: empiezan con el mismo artículo.
+PALABRAS_DE_APERTURA = 3
+
+
+def _apertura(narracion: str) -> str:
+    limpio = "".join(
+        c.lower() if (c.isalnum() or c.isspace() or c == "'") else " " for c in narracion
+    )
+    return " ".join(limpio.split()[:PALABRAS_DE_APERTURA])
+
+
+def aperturas_repetidas(narraciones: list[str]) -> list[tuple[int, int]]:
+    """Los pares de escenas que arrancan con las MISMAS palabras.
+
+    Los cuatro tests de política que ya existen comparan un devocional contra otro:
+    que dos piezas distintas no repitan carga, promesa, Escritura ni imagen. Este
+    guardián mira hacia adentro de UNA pieza, que es donde apareció el problema de
+    verdad el 7-ago-2026: las tres escenas de oración del primer devocional abrieron
+    las tres con la misma frase, copiada de un ejemplo del prompt.
+
+    Un devocional de 150 s tiene diez escenas y repite beats a propósito —esa es la
+    forma del género—, así que la repetición no se puede evitar prohibiendo el beat:
+    hay que mirar el texto. Es determinista y puro, como los guardianes del
+    storyboard: no pregunta, mide.
+
+    Devuelve los pares `(i, j)` con `i < j`. Vacío es que está bien.
+    """
+    aperturas = [_apertura(n) for n in narraciones]
+    return [
+        (i, j)
+        for i in range(len(aperturas))
+        for j in range(i + 1, len(aperturas))
+        if aperturas[i] and aperturas[i] == aperturas[j]
+    ]

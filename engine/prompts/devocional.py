@@ -57,9 +57,24 @@ def system_prompt(*, language: Language, promise: str, scripture: str) -> str:
         "the lake', 'the sun rises over the valley'. The listener is in their bed, "
         "not in the landscape.\n"
         "- Stay in the SAME grammatical person for the whole piece. When the scene "
-        "asks you to pray, pray in the first person ('I bring you this thought') and "
-        "keep speaking to the listener as 'you' everywhere else. Never drift between "
-        "the two inside one scene.\n"
+        "asks you to pray, the prayer is spoken in the first person and addressed to "
+        "God; everywhere else you are speaking to the listener as 'you'. Never drift "
+        "between the two inside one scene.\n"
+        # Esta regla, y el ejemplo que se le SACÓ a la de arriba, salieron de escuchar
+        # el primer devocional narrado (7-ago-2026). Las tres escenas de oración
+        # abrieron las tres con «I bring you this thought» — la frase exacta que este
+        # prompt traía entre paréntesis como ejemplo de primera persona. El escritor ve
+        # la escena anterior y la repitió igual: **el ejemplo pesa más que el
+        # contexto**, que es la misma trampa del verificador de anatomía ("ponerle la
+        # respuesta en la pregunta a un modelo es garantizar que la repita"), sólo que
+        # acá el ejemplo era de forma y no de contenido.
+        #
+        # No es una cuestión de estilo: tres aperturas idénticas adentro del mismo
+        # video son literalmente el "generic or unoriginal template" que la política de
+        # YouTube del 16-jul-2026 castiga con el canal entero, no con el video.
+        "- NEVER open a scene with the same words as the scene before it. If you are "
+        "shown a previous scene, your first sentence must not reuse its opening. Each "
+        "scene begins somewhere new.\n"
         "- NEVER promise an outcome. Not healing, not money, not that someone will "
         "come back, not a timeline. You may promise presence and company. This is the "
         "rule that matters most and it is not negotiable.\n"

@@ -16,7 +16,7 @@ import pytest
 
 from engine.core.enums import Emotion, Language, NarrativeBeat, ShotType, SpiritualNeed
 from engine.core.exceptions import DomainError
-from engine.core.models import Character, Theme
+from engine.core.models import Character, Style, Theme
 from engine.core.models.character import Appearance
 from engine.core.models.theme import Palette
 from engine.generators.devotional import PROFILES, profile_for
@@ -396,3 +396,166 @@ def test_ninguna_imagen_pide_caras_ni_manos() -> None:
     for img in todas:
         bajo = img.lower()
         assert not any(p in bajo for p in prohibidas), f"pide anatomía: {img!r}"
+
+
+def test_el_prompt_no_le_dicta_al_modelo_una_frase_de_oracion() -> None:
+    """El ejemplo entre paréntesis que se convirtió en muletilla (7-ago-2026).
+
+    El prompt decía *"pray in the first person ('I bring you this thought')"*, y el
+    primer devocional narrado abrió sus TRES escenas de oración con esa frase exacta.
+    El escritor recibe la escena anterior, así que la tenía a la vista y la repitió
+    igual: el ejemplo pesa más que el contexto.
+
+    Es la misma trampa que ya costó una vuelta con el verificador de anatomía —ponerle
+    la respuesta en la pregunta a un modelo es garantizar que la repita—, sólo que acá
+    el ejemplo era de FORMA. Por eso el test no prohíbe una frase: prohíbe **dar
+    ejemplos de texto narrado** en las reglas de persona gramatical.
+    """
+    from engine.prompts.devocional import system_prompt
+
+    prompt = system_prompt(
+        language=Language.EN,
+        promise="Peace is not the absence of the storm.",
+        scripture="Philippians 4:6-7",
+    )
+    assert "I bring you this thought" not in prompt
+    assert "same words as the scene before" in prompt
+
+
+def test_el_guardian_caza_dos_escenas_que_abren_igual() -> None:
+    """Los otros cuatro tests de política comparan un devocional contra OTRO.
+
+    Éste mira hacia adentro de uno solo, que es donde apareció el problema real. Tres
+    aperturas idénticas dentro del mismo video son el *"generic or unoriginal
+    template"* de la política del 16-jul-2026 tanto como diez videos calcados.
+    """
+    from engine.generators.devotional import aperturas_repetidas
+
+    assert aperturas_repetidas([]) == []
+    assert (
+        aperturas_repetidas(
+            [
+                "You wake up at three a.m., eyes wide open.",
+                "I bring you this thought that keeps returning.",
+                "May you find rest in this new day.",
+            ]
+        )
+        == []
+    )
+
+    # El caso real: las tres escenas de oración del primer devocional.
+    repetidas = aperturas_repetidas(
+        [
+            "If this message found you tonight, it's for a reason.",
+            "I bring you this thought that keeps returning...",
+            "I bring you this thought... I ask for your body to unclench.",
+            "I bring you this thought... I hand over each racing thought.",
+        ]
+    )
+    assert repetidas == [(1, 2), (1, 3), (2, 3)]
+
+
+def test_la_puntuacion_no_alcanza_para_esquivar_al_guardian() -> None:
+    """Cambiar una coma por puntos suspensivos no vuelve original a una muletilla.
+
+    El modelo varía la puntuación mucho antes que las palabras: si el guardián
+    comparara el texto crudo, la misma apertura con tres puntos en vez de coma pasaría
+    y el guardián quedaría de adorno.
+    """
+    from engine.generators.devotional import aperturas_repetidas
+
+    assert aperturas_repetidas(
+        ["I bring you this thought.", "I bring you, this thought..."]
+    ) == [(0, 1)]
+
+
+def test_un_estilo_sin_rostro_nunca_pide_una_cara(orante: Character, tema_amanecer: Theme) -> None:
+    """Las dos imágenes rotas del 7-ago-2026, convertidas en un test.
+
+    El primer devocional narrado sacó una escena que era un primer plano de una cara con
+    la boca abierta y otra con la figura saltando con los brazos en alto. Ninguna estaba
+    mal dibujada — salieron **exactamente como se las pidió**, porque el prompt de
+    imagen traduce la emoción a cara y postura:
+
+        SURPRISE → "boca abierta, ojos redondos, cuerpo erguido de golpe"
+        JOY      → "sonrisa grande, ojos brillantes, postura saltarina"
+
+    Es la regla correcta para un cuento y la ruina de un nicho que se eligió PORQUE no
+    tiene caras que verificar. El prompt negativo ya decía "faces, close-up hands" y no
+    alcanzó: **el positivo le gana al negativo**, y por eso esto se prueba sobre el
+    prompt positivo.
+    """
+    from engine.core.enums import Emotion
+    from engine.core.models.scene import Scene
+    from engine.prompts import image as image_prompts
+
+    estilo = Style(
+        id="luz-natural",
+        name="Natural light",
+        art_style="cinematic landscape photography",
+        emotion_in_light=True,
+        continuity="MISMA paleta y MISMA hora del día que el resto del devocional",
+    )
+    prohibidas = (
+        "sonrisa", "boca abierta", "ojos redondos", "ojos brillantes", "saltarina",
+        "cejas", "mirada baja", "mentón", "ceño",
+    )
+    for emocion in Emotion:
+        escena = Scene(
+            index=0,
+            beat=NarrativeBeat.LESSON,
+            purpose="Bring the promise",
+            duration_s=15.0,
+            narration="a peace that guards the heart",
+            location="a still lake under an open sky",
+            character_ids=[orante.id],
+            emotion=emocion,
+        )
+        prompt = image_prompts.compose(
+            escena, style=estilo, theme=tema_amanecer, characters={orante.id: orante}
+        ).lower()
+        for palabra in prohibidas:
+            assert palabra not in prompt, f"{emocion.value} pide {palabra!r}: {prompt}"
+        assert "no se le ve la cara" in prompt
+        assert "día soleado y despejado" not in prompt
+
+
+def test_el_estilo_del_cuento_no_cambio(orante: Character, tema_amanecer: Theme) -> None:
+    """La otra mitad de la regla de arriba: los cuentos tienen que salir IGUALES.
+
+    `emotion_in_light` y `continuity` son aditivos y con default de cuento justamente
+    para que agregar un nicho no le cambie una coma al que ya está publicando.
+    """
+    from engine.core.enums import Emotion
+    from engine.core.models.scene import Scene
+    from engine.prompts import image as image_prompts
+
+    estilo = Style(id="pixar", name="Pixar", art_style="animación 3D estilo Pixar")
+    escena = Scene(
+        index=0,
+        beat=NarrativeBeat.LESSON,
+        purpose="Dino ofrece la pelota",
+        duration_s=15.0,
+        narration="Dino le ofrece la pelota",
+        location="el claro del bosque",
+        character_ids=[orante.id],
+        emotion=Emotion.JOY,
+    )
+    prompt = image_prompts.compose(
+        escena, style=estilo, theme=tema_amanecer, characters={orante.id: orante}
+    )
+    assert "sonrisa grande, ojos brillantes, postura saltarina" in prompt
+    assert "día soleado y despejado" in prompt
+
+
+def test_la_promesa_no_se_cuenta_en_primer_plano() -> None:
+    """`primer_plano` significa, textual, *"las caras y las manos llenan el cuadro"*.
+
+    El planificador pedía `CLOSE_UP` para el beat de la promesa con la intención —
+    escrita en un comentario, donde el prompt de imagen no puede leerla— de que fuera
+    un primer plano DE LA LUZ. Un comentario no es una interfaz.
+    """
+    from engine.core.enums import ShotType
+    from engine.generators.devotional_planner import PLANO_POR_BEAT
+
+    assert ShotType.CLOSE_UP not in PLANO_POR_BEAT.values()

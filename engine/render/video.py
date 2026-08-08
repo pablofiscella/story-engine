@@ -92,6 +92,19 @@ ADELANTO_DEL_CIERRE_S = 1.0
 #: Cuántos caracteres entran cómodos en una línea de un cuadro vertical.
 LARGO_DE_LINEA = 20
 
+#: Dónde va el texto del cierre. **Se fija dónde TERMINA el bloque, no dónde empieza.**
+#:
+#: Decía `h*0.80` —el borde de arriba— y el texto crece hacia abajo, así que cada línea
+#: de más lo empujaba fuera del cuadro. Con los cuentos nunca falló porque su pregunta
+#: final entra en dos líneas; la invitación del devocional ocupa cinco y el 7-ago-2026
+#: salió con la última palabra cortada por el borde inferior.
+#:
+#: Restarle `text_h` deja el final del bloque clavado al 88 % del alto para cualquier
+#: cantidad de líneas, y sin que nadie tenga que estimar cuánto mide una línea de
+#: DejaVu — que es justamente lo que se estimaba mal. Con dos líneas da y≈1534 contra
+#: los 1536 de antes: los cuentos ya publicados no se mueven.
+Y_DEL_CIERRE = "h*0.88-text_h"
+
 
 def _envolver(texto: str, largo: int = LARGO_DE_LINEA) -> list[str]:
     """Parte el texto en líneas sin cortar palabras."""
@@ -208,7 +221,19 @@ class ShortRenderer:
         pregunta = self._texto(
             story.closing_question,
             salida.parent / "_cierre.txt",
-            y="h*0.80",
+            # **Anclado ABAJO, no arriba.** Decía `h*0.80`, que es dónde EMPIEZA el
+            # bloque: el texto crece hacia abajo, así que cuantas más líneas tiene, más
+            # se sale del cuadro. Con los cuentos nunca se notó porque su pregunta final
+            # entra en dos líneas de español. La invitación del devocional —"If your
+            # mind has been loud lately, type AMEN so I can pray for you by name"— ocupa
+            # cinco, y el 7-ago-2026 salió con la última palabra CORTADA por el borde de
+            # abajo. Justo esa línea: el nicho se eligió por su 1,718 % de comentarios,
+            # y el CTA que los pide era lo único ilegible del video.
+            #
+            # `text_h` lo resuelve para cualquier largo: se fija dónde TERMINA el bloque
+            # y ffmpeg calcula el resto. Con dos líneas cae en y≈1534 contra los 1536 de
+            # antes, así que los cuentos que ya salieron no se mueven.
+            y=Y_DEL_CIERRE,
             tope=64,
             desde=max(0.0, antes_de_la_pregunta - ADELANTO_DEL_CIERRE_S),
         )
