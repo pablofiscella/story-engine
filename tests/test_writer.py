@@ -13,7 +13,14 @@ from engine.core.enums import EducationalValue, StoryStatus
 from engine.core.exceptions import ProviderError, ProviderRefusedError, ProviderUnavailableError
 from engine.core.models import Character, Style, Theme
 from engine.engine import StoryEngine
-from engine.generators.writer import StoryWriter, _limpiar, _recortar, _subtitulo
+from engine.generators.writer import (
+    PALABRAS_DE_APERTURA,
+    StoryWriter,
+    _limpiar,
+    _recortar,
+    _subtitulo,
+    apertura_de,
+)
 from engine.providers.fake import FakeTextProvider, ProviderQueCae, ProviderVacio
 
 pytestmark = pytest.mark.anyio
@@ -263,3 +270,88 @@ def test_el_recorte_no_deja_la_frase_colgada() -> None:
     cortada justo en una preposición, que no cierra nada."""
     texto = "Dino y Rexo juegan felices con la pelota de colores en el claro del bosque"
     assert _recortar(texto, 12) == "Dino y Rexo juegan felices con la pelota de colores."
+
+
+# --- Lo que el escritor VE, que es lo que decide lo que escribe -------------------
+def test_al_escritor_no_se_le_muestra_el_lugar_si_el_genero_no_lo_narra() -> None:
+    """**Pedirle algo en la regla y darle lo contrario en el dato es una regla
+    imposible.**
+
+    El sistema devocional dice, textual: *"NEVER describe the location or what the
+    person is doing or seeing. The location you are given is there so the ILLUSTRATOR
+    knows what to draw"*. Y el pedido, dos líneas después, le mostraba
+    `- Dónde: a country road between fields at sunrise`.
+
+    Resultado medido sobre el primer devocional de 20 minutos (8-ago-2026): **6 de 20
+    escenas** narraron el paisaje —*"You stand at the shoreline"*, *"you walk along a
+    quiet country road"*— en un formato donde quien escucha está en su cama.
+
+    Es el mismo patrón que ya mordió dos veces a este motor: el ejemplo del prompt que
+    el escritor repitió, y la respuesta puesta adentro de la pregunta del verificador de
+    anatomía. La escena SIGUE teniendo su lugar: lo que cambia es a quién se lo cuenta.
+    """
+    from engine.core.enums import Emotion, NarrativeBeat, ShotType
+    from engine.core.models.plan import ScenePlan
+    from engine.prompts.narration import scene_prompt
+
+    plan = ScenePlan(
+        index=0,
+        beat=NarrativeBeat.HOOK,
+        purpose="Saludar a quien mira",
+        duration_s=60.0,
+        location="a country road between fields at sunrise",
+        character_ids=["orante"],
+        emotion=Emotion.CALM,
+        shot=ShotType.WIDE,
+    )
+    con = scene_prompt(plan, characters={}, max_words=100)
+    sin = scene_prompt(plan, characters={}, max_words=100, narra_el_lugar=False)
+
+    assert "country road" in con  # los cuentos sí narran dónde pasan
+    assert "country road" not in sin
+    assert "Dónde" not in sin
+    assert "Saludar a quien mira" in sin  # y lo demás sigue igual
+
+
+def test_el_escritor_ve_TODAS_las_aperturas_ya_usadas_y_no_solo_la_anterior() -> None:
+    """Una regla que sólo mira la escena anterior no alcanza cuando hay veinte.
+
+    El sistema ya decía *"NEVER open a scene with the same words as the scene before
+    it"*, y el primer devocional de 20 minutos salió con **11 de 20 escenas empezando
+    con "As…"**: *"As dawn breaks"*, *"As you breathe in"*, *"As the day unfolds"*.
+    Ninguna repetía a su vecina inmediata, así que ninguna violaba la regla — y el
+    conjunto es igual el *"generic or unoriginal template"* que la política de YouTube
+    del 16-jul-2026 castiga con el canal entero.
+    """
+    from engine.core.enums import Emotion, NarrativeBeat, ShotType
+    from engine.core.models.plan import ScenePlan
+    from engine.prompts.narration import scene_prompt
+
+    plan = ScenePlan(
+        index=3,
+        beat=NarrativeBeat.PROBLEM,
+        purpose="Nombrar la carga",
+        duration_s=60.0,
+        location="a hilltop",
+        character_ids=["orante"],
+        emotion=Emotion.SADNESS,
+        shot=ShotType.MEDIUM,
+    )
+    pedido = scene_prompt(
+        plan, characters={}, max_words=100,
+        aperturas=["As the dawn breaks", "As you breathe in"],
+    )
+    assert "As the dawn breaks" in pedido
+    assert "As you breathe in" in pedido
+    assert "no puede empezar" in pedido
+
+
+def test_la_apertura_son_CUATRO_palabras() -> None:
+    """Con dos, *"As dawn"* y *"As you"* cuentan como arranques distintos y el escritor
+    sigue empezando todo igual. Con ocho, la lista deja de ser una prohibición y
+    empieza a funcionar como EJEMPLO — la trampa que este motor ya documentó dos veces.
+    """
+    assert PALABRAS_DE_APERTURA == 4
+    assert apertura_de("As the dawn breaks gently, I pause") == "As the dawn breaks"
+    assert apertura_de("As the dawn breaks softly, take a moment") == "As the dawn breaks"
+    assert apertura_de("Hola") == "Hola"

@@ -13,6 +13,8 @@ cuento".
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from engine.core.enums import AgeRange, Language
 from engine.core.models.character import Character
 from engine.core.models.plan import ScenePlan
@@ -89,11 +91,36 @@ def scene_prompt(
     max_words: int,
     previous: str | None = None,
     is_last: bool = False,
+    aperturas: Sequence[str] = (),
+    narra_el_lugar: bool = True,
 ) -> str:
     """El pedido de UNA escena.
 
     Incluye lo que pasó antes para que el texto encadene, pero solo la escena
     anterior: alcanza para dar continuidad y mantiene el pedido corto y barato.
+
+    `aperturas` son los arranques que ya se usaron en esta pieza, y existen porque
+    **una regla que sólo mira la escena anterior no alcanza cuando hay veinte**.
+    Medido sobre el primer devocional de 20 minutos (8-ago-2026): el sistema ya decía
+    *"NEVER open a scene with the same words as the scene before it"* y **diez de las
+    veinte escenas abrieron con "As…"** — *"As dawn breaks"*, *"As you breathe in"*,
+    *"As the day unfolds"*, *"As the dawn breaks gently"*. Ninguna repetía a su vecina
+    exacta, así que ninguna violaba la regla, y el conjunto es igual el *"generic or
+    unoriginal template"* que la política de YouTube del 16-jul-2026 castiga con el
+    canal entero. Con seis escenas el problema no existía; con veinte, sí.
+
+    `narra_el_lugar=False` **le saca la ubicación al pedido**, y es la corrección más
+    cara de las dos. El sistema devocional dice, textual: *"NEVER describe the location
+    or what the person is doing or seeing. The location you are given is there so the
+    ILLUSTRATOR knows what to draw"*. Y el pedido, dos líneas después, le mostraba
+    `- Dónde: a country road between fields at sunrise`. El escritor hizo lo esperable:
+    *"As you walk along a quiet country road"*, *"As you stand at the shoreline"*.
+
+    **Pedirle algo en la regla y darle lo contrario en el dato no es una regla débil,
+    es una regla imposible.** Es el mismo patrón que ya mordió dos veces a este motor:
+    el ejemplo del prompt que el escritor repitió, y la respuesta puesta adentro de la
+    pregunta del verificador de anatomía. Si el género no narra el lugar, el lugar no
+    va en el pedido — la escena lo sigue teniendo para el ilustrador.
     """
     en_escena = ", ".join(
         f"{characters[cid].name} ({characters[cid].appearance.species})"
@@ -104,11 +131,19 @@ def scene_prompt(
     partes = []
     if previous:
         partes.append(f"La escena anterior terminó así:\n«{previous}»\n")
+    if aperturas:
+        usadas = "\n".join(f"- «{a}…»" for a in aperturas)
+        partes.append(
+            "ARRANQUES YA USADOS EN ESTA PIEZA. Tu primera frase no puede empezar "
+            "como ninguno de éstos, ni con las mismas primeras palabras:\n"
+            f"{usadas}\n"
+        )
 
+    lugar = f"- Dónde: {plan.location}\n" if narra_el_lugar else ""
     partes.append(
         "Escribí la narración de esta escena:\n"
         f"- Qué tiene que pasar: {plan.purpose}\n"
-        f"- Dónde: {plan.location}\n"
+        f"{lugar}"
         f"- Quiénes están: {en_escena}\n"
         f"- Clima emocional: {plan.emotion.value}\n"
         f"- MÁXIMO {max_words} palabras."

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Sequence
 
 from engine.core.enums import StoryStatus
 from engine.core.exceptions import ProviderError
@@ -41,7 +42,13 @@ class StoryWriter:
     def __init__(self, provider: TextProvider) -> None:
         self._provider = provider
 
-    async def write(self, story: Story, *, sistema: str | None = None) -> Story:
+    async def write(
+        self,
+        story: Story,
+        *,
+        sistema: str | None = None,
+        narra_el_lugar: bool = True,
+    ) -> Story:
         """Escribe todas las escenas de `story` y la deja en estado WRITTEN.
 
         Necesita que la historia ya tenga plan. Devuelve la MISMA historia mutada:
@@ -65,6 +72,11 @@ class StoryWriter:
         personajes = story.characters_by_id
         escenas: list[Scene] = []
         anterior: str | None = None
+        # Los arranques ya usados, para que la escena 14 no abra como la 3. Sin esto,
+        # diez de veinte escenas del primer devocional largo abrieron con "As…": la
+        # regla del sistema sólo prohíbe repetir a la escena ANTERIOR, y con veinte
+        # escenas eso no alcanza. Ver `scene_prompt`.
+        aperturas: list[str] = []
 
         for plan in story.plan.scenes:
             escena = await self._escribir_escena(
@@ -73,12 +85,15 @@ class StoryWriter:
                 personajes=personajes,
                 anterior=anterior,
                 es_ultima=plan.index == len(story.plan.scenes) - 1,
+                aperturas=aperturas,
+                narra_el_lugar=narra_el_lugar,
             )
             escena.image_prompt = image_prompts.compose(
                 escena, style=story.style, theme=story.theme, characters=personajes
             )
             escenas.append(escena)
             anterior = escena.narration
+            aperturas.append(apertura_de(escena.narration))
 
         story.scenes = escenas
         if story.status is StoryStatus.PLANNED:
@@ -152,6 +167,8 @@ class StoryWriter:
         personajes,
         anterior: str | None,
         es_ultima: bool,
+        aperturas: Sequence[str] = (),
+        narra_el_lugar: bool = True,
     ) -> Scene:
         """Una escena, con reintentos si el texto no entra en su duración."""
         tope = _presupuesto(plan.duration_s)
@@ -161,6 +178,8 @@ class StoryWriter:
             max_words=tope,
             previous=anterior,
             is_last=es_ultima,
+            aperturas=aperturas,
+            narra_el_lugar=narra_el_lugar,
         )
 
         texto = ""
@@ -191,6 +210,8 @@ class StoryWriter:
                         max_words=tope,
                         previous=anterior,
                         is_last=es_ultima,
+                        aperturas=aperturas,
+                        narra_el_lugar=narra_el_lugar,
                     )
                     + prompts.retry_suffix(sobrante, tope)
                 )
@@ -275,3 +296,18 @@ def _subtitulo(texto: str, largo: int = 90) -> str:
         return texto
     corte = texto.rfind(".", 0, largo)
     return texto[: corte + 1] if corte > 20 else texto[: largo - 1].rstrip() + "…"
+
+
+#: Cuántas palabras del arranque se le muestran al escritor como "ya usada".
+#:
+#: Cuatro. Con dos, *"As dawn"* y *"As you"* cuentan como arranques distintos y el
+#: escritor sigue empezando todo igual; con ocho, la lista se vuelve una lista de
+#: frases enteras y **empieza a funcionar como ejemplo en vez de como prohibición** —
+#: la trampa que este motor ya documentó dos veces. Cuatro alcanza para que *"As the
+#: dawn breaks gently"* y *"As the dawn breaks softly"* choquen entre sí.
+PALABRAS_DE_APERTURA = 4
+
+
+def apertura_de(narracion: str) -> str:
+    """Las primeras palabras de una escena, para que ninguna otra empiece igual."""
+    return " ".join(narracion.split()[:PALABRAS_DE_APERTURA])

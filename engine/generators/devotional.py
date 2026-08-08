@@ -332,8 +332,15 @@ PROFILES: dict[SpiritualNeed, DevotionalProfile] = {
                 "since before getting out of bed",
                 "Pray handing over what today will not fix, and ask for company inside "
                 "it instead of a solution",
-                "Pray for the end of this day while it is still beginning: for lying "
-                "down tonight lighter than getting up",
+                # **NO nombra la noche, y eso costó un guion.** La primera versión
+                # decía *"for lying down tonight lighter than getting up"*, y el
+                # escritor devolvió dos escenas de oración de NOCHE —"as I prepare for
+                # rest", "each hour that has passed"— adentro de un devocional de la
+                # mañana. Nombrar la noche en la instrucción alcanza para que el modelo
+                # se mude de hora del día: la instrucción de un beat es el único
+                # contexto fuerte que tiene.
+                "Pray for the hours you will not see coming today, the ones that are "
+                "not on any list yet",
             ),
         },
     ),
