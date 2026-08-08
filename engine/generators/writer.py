@@ -41,16 +41,23 @@ class StoryWriter:
     def __init__(self, provider: TextProvider) -> None:
         self._provider = provider
 
-    async def write(self, story: Story) -> Story:
+    async def write(self, story: Story, *, sistema: str | None = None) -> Story:
         """Escribe todas las escenas de `story` y la deja en estado WRITTEN.
 
         Necesita que la historia ya tenga plan. Devuelve la MISMA historia mutada:
         el plan, el tema y el elenco no se tocan.
+
+        `sistema` permite pasar OTRO prompt de narrador. Existe porque el motor dejó de
+        contar una sola clase de cosa: el prompt por defecto dice "sos un cuentacuentos
+        que narra para chicos de 3 a 5 años" y calibra el vocabulario por edad, que es
+        exactamente lo que no hay que decirle a quien narra una oración para adultos.
+        Es un parámetro y no un `if`: el escritor no tiene por qué saber cuántos
+        géneros existen.
         """
         if story.plan is None:
             raise ValueError("La historia no tiene plan: hay que planificarla antes de escribirla.")
 
-        sistema = prompts.system_prompt(
+        sistema = sistema or prompts.system_prompt(
             language=story.metadata.language,
             age_range=story.metadata.age_range,
             value_moral=story.moral or "",

@@ -77,6 +77,32 @@ class EducationalValue(StrEnum):
     PERSEVERANCE = "perseverancia"
 
 
+class SpiritualNeed(StrEnum):
+    """El estado del que mira, para el nicho devocional. Es su ancla, como
+    `EducationalValue` lo es del cuento infantil.
+
+    La diferencia con un cuento no es de tono sino de destinatario: el cuento le pasa
+    algo a un personaje y el chico mira; acá no hay personaje que aprenda nada, hay
+    alguien del otro lado de la pantalla a las tres de la mañana. Por eso el ancla no
+    es una virtud a enseñar sino una CARGA a nombrar: quien busca "prayer for anxiety"
+    a esa hora no quiere que le expliquen la ansiedad, quiere que alguien la nombre.
+
+    Lista curada por la misma razón que la de valores: cada necesidad exige saber cuál
+    es su carga concreta y qué promesa la responde. Sumar una implica decidir eso.
+    """
+
+    ANXIETY = "ansiedad"
+    MORNING = "manana"
+    NIGHT = "noche"
+    STRENGTH = "fuerza"
+    PROVISION = "provision"
+    HEALING = "sanidad"
+    FAMILY = "familia"
+    GUIDANCE = "direccion"
+    FORGIVENESS = "perdon"
+    GRATITUDE = "gratitud"
+
+
 class CharacterRole(StrEnum):
     """Rol narrativo del personaje dentro de UNA historia.
 
