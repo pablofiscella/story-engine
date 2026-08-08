@@ -53,7 +53,8 @@ en inglés, revisado a mano el 8-ago-2026. Lo que tenía, medido:
 | de dónde salió | cuántos | qué |
 |---|---:|---|
 | guardián determinista | 2 | `take a moment` (0 y 4), `when your heart` (2 y 3) |
-| el revisor, verificado | 6 | `no worries`, `Your eyes open`, `message found you`, `breaks gently`, `wraps around you` repetido, y el juicio de traducción |
+| el revisor, verificado | 6 | `no worries`, `Your eyes open`, `message found you`,
+  `breaks gently`, `wraps around you` repetido, y el juicio de traducción |
 | el revisor, descartado | 1 | una muletilla que el código fue a contar y no se repetía |
 
 Tres cosas que sólo se supieron corriéndolo, y que valen más que el módulo:
