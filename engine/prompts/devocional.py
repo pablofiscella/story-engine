@@ -25,6 +25,29 @@ from __future__ import annotations
 
 from engine.core.enums import Language
 
+#: La DIRECCIÓN de la toma para el formato largo: qué se le pide al modelo de voz
+#: antes de una palabra.
+#:
+#: Va aparte de `prompts.voz.DIRECCION` —que dice *"narración de cuento infantil, voz
+#: muy expresiva, animada, acento argentino"*— porque acá cada una de esas palabras
+#: está mal: **expresiva y animada es exactamente lo que no se quiere.** Un devocional
+#: de media hora existe para que alguien se duerma o rece con él puesto; un narrador
+#: que se entusiasma lo despierta.
+#:
+#: Las dos cualidades que se piden son las dos que se midieron al elegir voz el
+#: 7-ago-2026: **más grave y más pausado** es lo que separa el registro de un
+#: devocional del de un cuento, y por eso se recomendó `bill` (138,8 palabras por
+#: minuto contra 147-151 del resto).
+#:
+#: **Va en CADA bloque, no sólo en el primero.** Para el modelo de voz cada pedido es
+#: un texto nuevo: sin la dirección, el bloque 2 de un devocional de cuarenta minutos
+#: vuelve a leer como un noticiero.
+DIRECCION_LARGA = (
+    "[Devotional prayer read aloud for adults, late at night or at first light. "
+    "Calm, low, unhurried voice. Speaking quietly to ONE person sitting close by, "
+    "never to an audience. Long pauses. Never excited, never preaching.]"
+)
+
 _IDIOMA: dict[Language, str] = {
     Language.EN: "English. Plain, warm, unhurried. No archaic 'thee' or 'thou'.",
     Language.ES: "Español neutro latinoamericano, sin voseo y sin modismos locales.",

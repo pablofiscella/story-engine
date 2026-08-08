@@ -32,6 +32,7 @@ diario del vault con el método.
 
 from __future__ import annotations
 
+import logging
 import math
 
 from engine.core.constants import (
@@ -52,10 +53,27 @@ from engine.generators.devotional import (
     profile_for,
 )
 
+logger = logging.getLogger(__name__)
+
 #: Segundos por escena. Una imagen serena con narración encima sostiene mucho más que
 #: una escena de cuento: con 15 s, un devocional de 150 s da 10 escenas, que es lo que
 #: hace falta para nombrar varias cargas sin que ninguna quede a las apuradas.
 RITMO_DEVOCIONAL_S = 15.0
+
+#: Segundos por escena en el formato de IMAGEN FIJA.
+#:
+#: **Los 15 s de arriba son el tiempo que aguanta una IMAGEN, no el que aguanta una
+#: idea.** En el formato largo la imagen no cambia nunca, así que ese número deja de
+#: significar algo: una escena pasa a ser un párrafo del devocional, y un párrafo de
+#: oración dura alrededor de un minuto.
+#:
+#: El 8-ago-2026 esto se descubrió al revés, generando: con 15 s un devocional de nueve
+#: minutos pide 36 escenas, el perfil de `manana` tiene 8 instrucciones distintas, y el
+#: planificador rellenó con **catorce escenas de la misma instrucción numerada**. El
+#: escritor hizo lo único que podía hacer con eso: catorce textos casi iguales, todos
+#: empezando con *"You wake up…"*. Con 60 s el mismo devocional son 9 escenas de ~150
+#: palabras cada una, que es lo que un párrafo de oración necesita para no repetirse.
+RITMO_LARGO_S = 60.0
 
 #: Si hay que recortar, en qué orden se sacan beats.
 #:
@@ -125,6 +143,7 @@ class DevotionalPlanner:
         duration_s: float,
         speaker: Character,
         language: Language = Language.EN,
+        ritmo_s: float = RITMO_DEVOCIONAL_S,
     ) -> StoryPlan:
         """Arma el plan completo.
 
@@ -149,8 +168,8 @@ class DevotionalPlanner:
         if language not in perfil.promise:
             language = _idioma_mas_cercano(language, perfil)
 
-        cantidad = self._cantidad_de_escenas(duration_s)
-        beats = self._distribuir_beats(cantidad)
+        cantidad = self._cantidad_de_escenas(duration_s, ritmo_s, perfil)
+        beats = self._distribuir_beats(cantidad, perfil)
         duraciones = self._repartir_duracion(duration_s, len(beats))
         lugares = self._elegir_lugares(theme, len(beats))
 
@@ -189,9 +208,20 @@ class DevotionalPlanner:
         return StoryPlan(target_duration_s=duration_s, scenes=escenas)
 
     # ------------------------------------------------------------------ estructura
-    def _cantidad_de_escenas(self, duration_s: float) -> int:
-        """Cuántas escenas entran. Sin edad: el ritmo lo fija el género."""
-        cantidad = round(duration_s / RITMO_DEVOCIONAL_S)
+    def _cantidad_de_escenas(
+        self,
+        duration_s: float,
+        ritmo_s: float = RITMO_DEVOCIONAL_S,
+        perfil: DevotionalProfile | None = None,
+    ) -> int:
+        """Cuántas escenas entran. Sin edad: el ritmo lo fija el género.
+
+        **Y nunca más de las que el perfil puede llenar con algo distinto.** Es el
+        techo que faltaba y que costó un devocional entero: pedir más escenas de las
+        que hay instrucciones no produce más devocional, produce la MISMA escena
+        repetida, que es lo que la política de contenido inauténtico castiga.
+        """
+        cantidad = round(duration_s / ritmo_s)
 
         # Los topes de escena mandan sobre el ritmo ideal, igual que en los cuentos:
         # con 150 s y escenas de 20 s como máximo hacen falta 8 sí o sí.
@@ -199,15 +229,43 @@ class DevotionalPlanner:
         cantidad = min(cantidad, math.floor(duration_s / MIN_SCENE_DURATION_S))
         cantidad = max(MIN_SCENES, min(cantidad, MAX_SCENES))
 
+        if perfil is not None:
+            distintas = instrucciones_distintas(perfil)
+            if cantidad > distintas:
+                logger.info(
+                    "El perfil de %s tiene %s instrucciones distintas y se pedían %s "
+                    "escenas: se usan %s, más largas, para que ninguna se repita.",
+                    perfil.need.value, distintas, cantidad, distintas,
+                )
+                cantidad = max(MIN_SCENES, distintas)
+
         if duration_s / cantidad < MIN_SCENE_DURATION_S:
             raise DomainError(
                 f"No se puede armar un devocional de {duration_s:.0f}s: ni con el mínimo "
                 f"de {MIN_SCENES} escenas cada una llega a {MIN_SCENE_DURATION_S}s."
             )
+        if duration_s / cantidad > MAX_SCENE_DURATION_S:
+            raise DomainError(
+                f"Un devocional de {duration_s:.0f}s con el perfil de "
+                f"{perfil.need.value if perfil else '—'} daría escenas de "
+                f"{duration_s / cantidad:.0f}s y el máximo es {MAX_SCENE_DURATION_S:.0f}s. "
+                f"Para hacerlo más largo hay que escribirle más variantes al perfil, no "
+                f"estirar las que tiene: repetir una instrucción da la misma escena."
+            )
         return cantidad
 
-    def _distribuir_beats(self, cantidad: int) -> list[NarrativeBeat]:
-        """El arco, estirado o recortado. Nunca altera el orden canónico."""
+    def _distribuir_beats(
+        self, cantidad: int, perfil: DevotionalProfile | None = None
+    ) -> list[NarrativeBeat]:
+        """El arco, estirado o recortado. Nunca altera el orden canónico.
+
+        **Un beat sólo se repite mientras le queden variantes propias**, y ése es el
+        arreglo del 8-ago-2026. Antes se repetía PROBLEM y ATTEMPT alternándolos hasta
+        llenar, sin mirar si el perfil tenía algo distinto que decir en la segunda
+        vuelta: `manana` no tiene ninguna variante de ATTEMPT, así que la segunda
+        oración llegaba al escritor con la MISMA instrucción, sólo que precedida de
+        "Then:". Dos escenas con la misma orden son dos escenas iguales.
+        """
         arco = list(CANONICAL_ARC)
 
         for beat in _ORDEN_DE_RECORTE:
@@ -222,6 +280,16 @@ class DevotionalPlanner:
             if pos is None:
                 # El beat se recortó por ser un devocional corto; no se lo trae de
                 # vuelta por la puerta de atrás.
+                continue
+            if perfil is not None and arco.count(repetible) >= 1 + len(
+                perfil.deepenings.get(repetible, ())
+            ):
+                if all(
+                    arco.count(b) >= 1 + len(perfil.deepenings.get(b, ()))
+                    for b in _ORDEN_DE_REPETICION
+                    if b in arco
+                ):
+                    break  # no queda nada distinto que agregar: se corta acá
                 continue
             arco.insert(pos + 1, repetible)
         return arco
@@ -275,6 +343,23 @@ class DevotionalPlanner:
         if total_del_beat > 1 and repeticion >= len(variantes):
             texto = f"{_ORDINAL.get(repeticion, f'#{repeticion + 1}')}: {texto}"
         return texto
+
+
+def instrucciones_distintas(perfil: DevotionalProfile) -> int:
+    """Cuántas escenas REALMENTE distintas puede escribir este perfil.
+
+    Un propósito por beat, más cada variante de `deepenings`. Es el techo duro de un
+    devocional: pedir más escenas que esto no alarga el devocional, lo repite.
+
+    Medido sobre `manana` el 8-ago-2026: **8** (seis beats + dos variantes de
+    PROBLEM). Se pidieron 36 y salieron catorce escenas que decían lo mismo. El número
+    no es una opinión sobre el largo ideal: es cuántas cosas distintas el perfil tiene
+    para decir, y está escrito en el propio perfil.
+
+    Para hacer devocionales más largos, la palanca es **escribirle más `deepenings` al
+    perfil** — no subir la duración y esperar que el escritor invente.
+    """
+    return len(perfil.purposes) + sum(len(v) for v in perfil.deepenings.values())
 
 
 # --------------------------------------------------------------------------- utils

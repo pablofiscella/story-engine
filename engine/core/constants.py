@@ -53,7 +53,28 @@ MAX_STORY_DURATION_S = 600
 DEFAULT_STORY_DURATION_S = 30
 
 MIN_SCENE_DURATION_S = 2.0
-MAX_SCENE_DURATION_S = 20.0
+
+#: Lo más que puede durar una escena.
+#:
+#: **Era 20 s, y 20 s no era un límite del dominio: era un límite del RENDER de
+#: shorts.** Una ilustración quieta más de veinte segundos en un video vertical se ve
+#: congelada, y por eso el cuento cambia de imagen seguido. Nada de eso vale en el
+#: formato de imagen fija, que deja la MISMA imagen nueve minutos a propósito.
+#:
+#: Se subió a 90 el 8-ago-2026 por un problema medido, no por comodidad: con el tope
+#: en 20, un devocional de nueve minutos necesita 27 escenas como mínimo, y el perfil
+#: de una necesidad espiritual tiene 8 instrucciones distintas. El planificador
+#: rellenaba repitiendo la misma instrucción numerada —"#14: Name waking up already
+#: carrying yesterday"— y el escritor devolvía **catorce escenas casi idénticas**, que
+#: es textualmente lo que la política de YouTube del 16-jul-2026 castiga con el canal
+#: entero: *"characters put in the same situation over and over again"*.
+#:
+#: Lo cazó el verificador de guion en su primer trabajo real, con 25 muletillas y
+#: `"You wake up,"` repetido en seis escenas.
+#:
+#: **A los cuentos no los mueve**: su ritmo lo fija `SCENE_PACING_S` (4 a 8 s), que es
+#: mucho más chico, y este tope nunca era el que mandaba. Hay un test que lo fija.
+MAX_SCENE_DURATION_S = 90.0
 
 #: Tolerancia al comparar la suma de escenas contra la duración objetivo. El
 #: planificador reparte segundos y el redondeo no puede hacer fallar la validación.

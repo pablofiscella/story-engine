@@ -27,10 +27,26 @@ from pathlib import Path
 
 import pytest
 
-from engine.core.enums import AspectRatio, StoryStatus
+from engine.core.enums import (
+    AgeRange,
+    AspectRatio,
+    EducationalValue,
+    Language,
+    SpiritualNeed,
+    StoryStatus,
+)
 from engine.core.exceptions import DomainError
+from engine.core.models.character import Appearance, Character
 from engine.core.models.scene import Scene
 from engine.core.models.story import Story
+from engine.core.models.theme import Palette, Theme
+from engine.generators.devotional import profile_for
+from engine.generators.devotional_planner import (
+    RITMO_LARGO_S,
+    DevotionalPlanner,
+    instrucciones_distintas,
+)
+from engine.generators.planner import StoryPlanner
 from engine.generators.still_narrator import (
     LIMITE_DE_PEDIDO,
     StillNarrator,
@@ -92,6 +108,94 @@ def _ffprobe(mp4: Path) -> dict:
         check=True, capture_output=True, text=True,
     )
     return json.loads(salida.stdout)
+
+
+# --- El planificador en formato largo ---------------------------------------------
+#: La figura en pantalla y el tema, mínimos, para planificar sin tocar proveedores.
+_ORANTE = Character(
+    id="orante",
+    name="the one who prays",
+    appearance=Appearance(species="human figure", description="a distant silhouette"),
+)
+_TEMA = Theme(
+    id="amanecer",
+    name="Quiet dawn",
+    description="wide quiet landscapes",
+    palette=Palette(primary="#F5C77E", secondary="#2E4A6B", accent="#FFF6E5"),
+    locations=["a hilltop above a wide valley", "an empty shoreline at dawn"],
+)
+
+
+def _plan_largo(need: SpiritualNeed, duracion: float = 540.0, ritmo: float = RITMO_LARGO_S):
+    return DevotionalPlanner().create_plan(
+        theme=_TEMA, need=need, duration_s=duracion,
+        speaker=_ORANTE, language=Language.EN, ritmo_s=ritmo,
+    )
+
+
+@pytest.mark.parametrize("need", list(SpiritualNeed))
+def test_ningun_devocional_largo_repite_una_sola_instruccion(need: SpiritualNeed) -> None:
+    """EL test de este archivo, y el que faltaba el 8-ago-2026 a la mañana.
+
+    Con el ritmo de 15 s, un devocional de nueve minutos pedía **36 escenas** y el
+    perfil de `manana` tiene **8 instrucciones distintas**. El planificador rellenó
+    repitiendo la misma orden numerada —`"#14: Name waking up already carrying
+    yesterday"`— y el escritor devolvió catorce textos casi iguales, todos empezando
+    con *"You wake up…"*.
+
+    Eso no es un problema de prosa: es textualmente lo que la política de YouTube del
+    16-jul-2026 castiga con el canal entero, *"characters put in the same situation
+    over and over again with the same outcome"*. Lo cazó el verificador de guion en su
+    primer trabajo real, con 25 muletillas.
+
+    Dos escenas con la misma instrucción son dos escenas iguales. Acá no puede haber
+    ninguna, para ninguna de las diez necesidades.
+    """
+    plan = _plan_largo(need)
+    propositos = [s.purpose for s in plan.scenes]
+    assert len(set(propositos)) == len(propositos)
+
+
+def test_el_perfil_dice_cuantas_escenas_distintas_puede_llenar() -> None:
+    """El techo no es una opinión sobre el largo ideal: está escrito en el perfil.
+
+    Y la palanca para hacer devocionales más largos queda dicha: escribirle más
+    `deepenings` al perfil, no subir la duración y esperar que el escritor invente.
+    """
+    perfil = profile_for(SpiritualNeed.MORNING)
+    assert instrucciones_distintas(perfil) == 8  # 6 propósitos + 2 variantes de PROBLEM
+    assert len(_plan_largo(SpiritualNeed.MORNING).scenes) <= 8
+
+
+def test_pedir_mas_largo_de_lo_que_el_perfil_aguanta_falla_diciendo_la_palanca() -> None:
+    """Falla antes de escribir una palabra, y el mensaje dice qué hacer.
+
+    Es lo contrario de lo que pasó el 8-ago-2026: el planificador aceptó en silencio y
+    el problema apareció recién leyendo 36 escenas generadas.
+    """
+    with pytest.raises(DomainError, match="más variantes al perfil"):
+        _plan_largo(SpiritualNeed.MORNING, duracion=1200.0)
+
+
+def test_el_tope_de_90s_no_mueve_a_los_cuentos(
+    tema_dinos: Theme, dino: Character, tuca: Character
+) -> None:
+    """`MAX_SCENE_DURATION_S` pasó de 20 a 90 y los cuentos tienen que salir idénticos.
+
+    Nunca era el tope que mandaba en un cuento: ahí manda `SCENE_PACING_S` (4 a 8 s por
+    escena según la edad), que es mucho más chico. Este test lo fija para que subirlo
+    no se pueda convertir en una regresión silenciosa del otro producto.
+    """
+    plan = StoryPlanner().create_plan(
+        theme=tema_dinos,
+        value=EducationalValue.SHARING,
+        age_range=AgeRange.PRESCHOOL,
+        duration_s=30.0,
+        protagonist=dino,
+        companion=tuca,
+    )
+    assert len(plan.scenes) == 6
+    assert all(s.duration_s <= 8.0 for s in plan.scenes)
 
 
 # --- El límite de 5.000 caracteres ------------------------------------------------
