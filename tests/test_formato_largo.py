@@ -705,3 +705,35 @@ async def test_con_varias_imagenes_hay_fundido_cruzado_y_no_corte(
     # Y el video sigue durando lo que el audio: los márgenes del cruce se cancelan.
     duracion = float(_ffprobe(mp4)["format"]["duration"])
     assert abs(duracion - (narracion.duracion_s + 1.2)) < 1.0
+
+
+async def test_la_placa_del_CTA_no_se_pisa_con_el_subtitulo_de_la_promesa(
+    devocional_largo: Story, tmp_path: Path
+) -> None:
+    """El error del 7-ago-2026 otra vez, en otra forma: el CTA ilegible.
+
+    El cálculo viejo restaba la duración del cierre ENTERO —promesa más invitación— y
+    le sacaba un segundo más, así que la placa entraba **mientras todavía se decía la
+    promesa**. Sin subtítulos en el medio eso no molestaba: la placa aparecía sobre la
+    imagen sola. Con subtítulos, el renglón de la promesa y la placa se dibujan a la
+    misma altura al mismo tiempo y quedan **los dos ilegibles**. Se vio mirando un
+    fotograma de la muestra a los 67 s, no midiendo.
+
+    Ahora la placa entra cuando la alineación dice que TERMINÓ la promesa, que es el
+    mismo segundo en el que el último subtítulo se va.
+    """
+    narracion = await StillNarrator(FakeVoiceProvider()).narrate(devocional_largo, tmp_path)
+    total = narracion.duracion_s + 1.2
+    renderer = StillRenderer()
+
+    desde = renderer._cuando_la_invitacion(devocional_largo, narracion, total)
+    subs = renderer._subtitulos(devocional_largo, narracion)
+
+    # Ningún subtítulo sigue en pantalla cuando la placa ya apareció.
+    assert all(s.hasta_s <= desde + 0.01 for s in subs), (
+        f"la placa entra en {desde:.2f}s y hay subtítulos hasta "
+        f"{max(s.hasta_s for s in subs):.2f}s"
+    )
+    # Y entra dentro del cierre, no antes: se ve cuando se la dice.
+    fin_del_cuerpo = sum(b.pista.duration_s for b in narracion.cuerpo)
+    assert fin_del_cuerpo < desde < total

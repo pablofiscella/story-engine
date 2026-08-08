@@ -215,12 +215,7 @@ class StillRenderer:
         # --- cuándo se ve cada texto -------------------------------------------
         # El título ya no se narra: su placa dura lo que se tarda en LEERLO.
         titulo_hasta = _lectura_s(story.metadata.title or "") + COLA_DEL_TITULO_S
-        invitacion_desde = max(
-            0.0,
-            total - COLA_FINAL_S
-            - sum(t.duration_s for t in story.closing_audio)
-            - ADELANTO_DE_LA_INVITACION_S,
-        )
+        invitacion_desde = self._cuando_la_invitacion(story, narracion, total)
 
         capas: list[str] = []
         if story.metadata.title:
@@ -290,6 +285,45 @@ class StillRenderer:
         return salida
 
     # ------------------------------------------------------------------------
+    def _cuando_la_invitacion(
+        self, story: Story, narracion: NarracionLarga, total: float
+    ) -> float:
+        """En qué segundo aparece la placa del CTA. **Medido, no estimado.**
+
+        Y es una corrección, no un refinamiento. El cálculo anterior restaba la
+        duración del cierre ENTERO —promesa más invitación— y le sacaba un segundo más
+        de adelanto, así que la placa entraba **mientras todavía se estaba diciendo la
+        promesa**. Con el medio del video sin texto eso no molestaba a nadie: la placa
+        aparecía sobre la imagen sola. Con subtítulos, el renglón de la promesa y la
+        placa del CTA se dibujan **a la misma altura y al mismo tiempo**, y quedan los
+        dos ilegibles. Se vio mirando un fotograma de la muestra a los 67 s.
+
+        Que es, otra vez, el error del 7-ago-2026: el CTA —la línea que pide el
+        comentario, o sea la que sostiene el nicho— siendo lo único que no se puede
+        leer del video.
+
+        Con la alineación del bloque del cierre se sabe **en qué segundo exacto termina
+        de decirse la promesa**, que es exactamente cuando el subtítulo de la promesa se
+        va y cuando empieza a decirse la invitación. Ya no hace falta adelantarla: el
+        adelanto existía para que el texto entrara "cuando se dice", y ahora entra
+        cuando se dice.
+        """
+        fin_del_cuerpo = sum(b.pista.duration_s for b in narracion.cuerpo)
+        if narracion.cierre and story.moral:
+            try:
+                return fin_del_cuerpo + narracion.cierre.marcas.fin_de(_limpio(story.moral))
+            except ValueError as e:
+                logger.warning(
+                    "No se pudo ubicar la promesa en el audio del cierre (%s): la "
+                    "invitación se ubica por duración, como antes.", e,
+                )
+        return max(
+            0.0,
+            total - COLA_FINAL_S
+            - sum(t.duration_s for t in story.closing_audio)
+            - ADELANTO_DE_LA_INVITACION_S,
+        )
+
     def _subtitulos(self, story: Story, narracion: NarracionLarga) -> list[Subtitulo]:
         """Los renglones de todo el cuerpo, con los segundos medidos del audio.
 

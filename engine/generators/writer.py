@@ -26,6 +26,7 @@ from engine.core.interfaces import TextProvider
 from engine.core.models.scene import Scene
 from engine.core.models.story import Story
 from engine.core.retry import con_reintentos
+from engine.generators.script_inspector import frases_repetidas
 from engine.prompts import image as image_prompts
 from engine.prompts import narration as prompts
 
@@ -77,6 +78,9 @@ class StoryWriter:
         # regla del sistema sólo prohíbe repetir a la escena ANTERIOR, y con veinte
         # escenas eso no alcanza. Ver `scene_prompt`.
         aperturas: list[str] = []
+        # Las frases que la pieza ya repitió, calculadas con el MISMO detector que usa
+        # el verificador después. Ver `muletillas_ya_usadas`.
+        muletillas: list[str] = []
 
         for plan in story.plan.scenes:
             escena = await self._escribir_escena(
@@ -86,6 +90,7 @@ class StoryWriter:
                 anterior=anterior,
                 es_ultima=plan.index == len(story.plan.scenes) - 1,
                 aperturas=aperturas,
+                muletillas=muletillas,
                 narra_el_lugar=narra_el_lugar,
             )
             escena.image_prompt = image_prompts.compose(
@@ -94,6 +99,7 @@ class StoryWriter:
             escenas.append(escena)
             anterior = escena.narration
             aperturas.append(apertura_de(escena.narration))
+            muletillas = muletillas_ya_usadas([e.narration for e in escenas])
 
         story.scenes = escenas
         if story.status is StoryStatus.PLANNED:
@@ -168,6 +174,7 @@ class StoryWriter:
         anterior: str | None,
         es_ultima: bool,
         aperturas: Sequence[str] = (),
+        muletillas: Sequence[str] = (),
         narra_el_lugar: bool = True,
     ) -> Scene:
         """Una escena, con reintentos si el texto no entra en su duración."""
@@ -179,6 +186,7 @@ class StoryWriter:
             previous=anterior,
             is_last=es_ultima,
             aperturas=aperturas,
+            muletillas=muletillas,
             narra_el_lugar=narra_el_lugar,
         )
 
@@ -211,6 +219,7 @@ class StoryWriter:
                         previous=anterior,
                         is_last=es_ultima,
                         aperturas=aperturas,
+                        muletillas=muletillas,
                         narra_el_lugar=narra_el_lugar,
                     )
                     + prompts.retry_suffix(sobrante, tope)
@@ -311,3 +320,30 @@ PALABRAS_DE_APERTURA = 4
 def apertura_de(narracion: str) -> str:
     """Las primeras palabras de una escena, para que ninguna otra empiece igual."""
     return " ".join(narracion.split()[:PALABRAS_DE_APERTURA])
+
+
+#: Cuántas frases repetidas se le muestran al escritor por pedido.
+#:
+#: Ocho. La lista es una PROHIBICIÓN, y una prohibición de cuarenta renglones deja de
+#: leerse: el modelo la trata como contexto de fondo. Se muestran las que más veces
+#: aparecieron, que son las que están por convertirse en el estribillo del video.
+MULETILLAS_EN_EL_PEDIDO = 8
+
+
+def muletillas_ya_usadas(narraciones: list[str]) -> list[str]:
+    """Las frases que esta pieza ya repitió, para que la próxima escena no las use.
+
+    **Es el guardián de muletillas usado ANTES en vez de sólo después.** El verificador
+    de guion las detecta cuando el guion ya está escrito y manda a reescribir; acá la
+    misma función evita que la frase se propague. La diferencia se ve en el número:
+    sobre el devocional de 20 minutos del 8-ago-2026, *"You are not alone"* llegó a
+    **seis escenas** (0, 2, 4, 7, 15, 18) y el verificador la marcó una vez que ya
+    estaba en las seis. Prohibirla a partir de la tercera corta la propagación.
+
+    Se reusa `frases_repetidas` y no se escribe otra: dos detectores de lo mismo se
+    desincronizan, y el que corrige tiene que estar de acuerdo con el que acusa.
+    """
+    repetidas = frases_repetidas(narraciones)
+    # Las más repetidas primero: son las que están por volverse el estribillo.
+    ordenadas = sorted(repetidas, key=lambda x: (-len(x[1]), x[1][0]))
+    return [frase for frase, _ in ordenadas[:MULETILLAS_EN_EL_PEDIDO]]

@@ -92,6 +92,7 @@ def scene_prompt(
     previous: str | None = None,
     is_last: bool = False,
     aperturas: Sequence[str] = (),
+    muletillas: Sequence[str] = (),
     narra_el_lugar: bool = True,
 ) -> str:
     """El pedido de UNA escena.
@@ -137,6 +138,13 @@ def scene_prompt(
             "ARRANQUES YA USADOS EN ESTA PIEZA. Tu primera frase no puede empezar "
             "como ninguno de éstos, ni con las mismas primeras palabras:\n"
             f"{usadas}\n"
+        )
+    if muletillas:
+        repes = "\n".join(f"- «{m}»" for m in muletillas)
+        partes.append(
+            "FRASES QUE ESTA PIEZA YA REPITIÓ. No uses ninguna, ni una variante que "
+            "cambie una palabra. Decí lo mismo de otra manera:\n"
+            f"{repes}\n"
         )
 
     lugar = f"- Dónde: {plan.location}\n" if narra_el_lugar else ""
