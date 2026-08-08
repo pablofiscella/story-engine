@@ -282,10 +282,58 @@ PROFILES: dict[SpiritualNeed, DevotionalProfile] = {
             ),
             NarrativeBeat.ENDING: "an open road heading toward a bright sunrise",
         },
+        # **VEINTE instrucciones distintas, y ese número es una decisión de negocio.**
+        #
+        # `instrucciones_distintas()` es el techo duro de la duración: el planificador
+        # nunca pide más escenas que instrucciones tiene el perfil, porque pedir más no
+        # alarga el devocional, lo repite. Con 8 instrucciones —las que había— el tope
+        # eran nueve minutos, y pedir veinte fallaba con el mensaje que dice la palanca:
+        # *"hay que escribirle más variantes al perfil, no estirar las que tiene"*.
+        # Esto es escribirlas.
+        #
+        # Veinte y no otro número: Pablo publica **5 videos por mes** y con 40 minutos
+        # cada uno se pasa de la cuota de ElevenLabs (143 % del plan), mientras que con
+        # 20 entra (71 %). A ritmo de 60 s por escena, veinte minutos son veinte
+        # escenas, y ninguna puede repetir la orden de otra.
+        #
+        # Las variantes van todas a PROBLEM y a ATTEMPT porque **son los dos únicos
+        # beats que el arco repite** (`_ORDEN_DE_REPETICION`): escribirle variantes a
+        # LA ESPERA subiría la cuenta sin que el plan pudiera usarlas. Y no es una
+        # limitación técnica que haya que rodear — es la forma real de una oración
+        # guiada larga, que es lo que hacen los canales que funcionan: nombrar una por
+        # una las cargas concretas de la mañana, y después entregar una por una las
+        # áreas del día. GUIDED PRAYER y Morning Grace Daily hacen exactamente eso
+        # durante media hora.
         deepenings={
             NarrativeBeat.PROBLEM: (
                 "Name opening your eyes already tired of a day that has not happened yet",
                 "Name the weight of a list that was long before the alarm went off",
+                "Name the first thought that arrived before you were even fully awake, "
+                "and how it was not a kind one",
+                "Name waking up in the same room, to the same problem, for the "
+                "how-many-th morning in a row",
+                "Name the tiredness that sleeping did not fix, the kind that is not "
+                "about the body",
+                "Name dreading one specific thing on today's calendar, the one you "
+                "would move if you could",
+                "Name getting up for other people before you have said one word for "
+                "yourself",
+            ),
+            NarrativeBeat.ATTEMPT: (
+                "Pray handing over the first hour, the one that usually sets the tone "
+                "for all the others",
+                "Pray for the people this day will put in front of you, by the role "
+                "they play and not by name",
+                "Pray over the work of today: what has to get done, and what will not, "
+                "and hand over both",
+                "Pray for the body that has to carry this day, and admit out loud how "
+                "tired it is",
+                "Pray about the conversation that is coming, the one being rehearsed "
+                "since before getting out of bed",
+                "Pray handing over what today will not fix, and ask for company inside "
+                "it instead of a solution",
+                "Pray for the end of this day while it is still beginning: for lying "
+                "down tonight lighter than getting up",
             ),
         },
     ),

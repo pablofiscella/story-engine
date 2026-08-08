@@ -1,4 +1,4 @@
-"""El render del formato LARGO: UNA imagen fija, texto y audio. Nada más.
+"""El render del formato LARGO: pocas imágenes, subtítulos y audio.
 
 Es el otro render del motor, y es el más simple de los dos justamente porque el
 formato lo es. Pablo, 8-ago-2026, mirando los canales del nicho: *"Los últimos videos
@@ -7,36 +7,43 @@ tienen sólo una imagen y sólo texto y audio"*.
 QUÉ DESAPARECE RESPECTO DEL SHORT, y no es poco:
 
     storyboard · verificador de anatomía · continuidad entre imágenes ·
-    fundido cruzado · una imagen por escena · la pausa entre escenas
+    una imagen por escena · la pausa entre escenas
 
-Todo eso existe para que SEIS imágenes cuenten una historia sin contradecirse. Con una
-sola no hay nada que encadenar: no hay continuidad que romper ni anatomía que contar
-más de una vez. **El formato barato del nicho es barato por esto**, no por la
-resolución: [The Gentle Bible](https://youtube.com/@thegentlebible) lee el Evangelio de
-Juan cuatro horas sobre un óleo fijo y saca 156.271 vistas por video con 78 videos.
+Todo eso existe para que SEIS imágenes cuenten una historia sin contradecirse. Acá las
+imágenes **no cuentan nada**: son ambientes, paisajes de la misma hora del día, y por
+eso pueden rotar sin que haya continuidad que romper ni anatomía que contar dos veces.
+**El formato barato del nicho es barato por esto**, no por la resolución:
+[The Gentle Bible](https://youtube.com/@thegentlebible) lee el Evangelio de Juan cuatro
+horas sobre un óleo fijo y saca 156.271 vistas por video con 78 videos.
+
+**LAS IMÁGENES ROTAN, y no siempre fue así.** El primer devocional largo salió con una
+sola, nueve minutos. Pablo, mirándolo: *"que las imágenes vayan rotando, una cada cinco
+minutos más o menos"*. A US$ 0,005 cada una, veinte minutos de video cuestan **dos
+centavos** de imagen: la rotación es gratis comparada con la voz, que es el 95 % del
+costo. Ver `IMAGEN_CADA_S`.
 
 **HORIZONTAL Y NO VERTICAL.** El short es 9:16 porque compite en un feed; esto es un
 video de YouTube que alguien deja puesto para dormirse o para rezar a la mañana, y se
 mira en una tele o en un teléfono acostado. Los 8 canales del nicho que hacen formato
 largo (medidos el 8-ago-2026: mediana de 31 a 158 minutos) publican en 16:9.
 
-LAS TRES COSAS QUE SE VEN, y cuándo:
+LO QUE SE VE, y cuándo:
 
-    el título      mientras se dice, sobre la imagen
-    (nada)         todo el cuerpo del devocional: la imagen sola
+    el título      los primeros segundos, arriba — SIN que nadie lo diga
+    los subtítulos todo el cuerpo, abajo, sincronizados con la voz
     la invitación  cuando empieza a decirse, y hasta el final
 
-**El medio va sin texto a propósito**, y es la diferencia más grande con el short. Un
-short lleva subtítulo permanente porque se mira sin sonido en un feed; esto se ESCUCHA
-—con los ojos cerrados, la mitad de las veces— y un cartel que cambia cada minuto es
-exactamente lo que impide que alguien se duerma con esto puesto.
+**Los subtítulos son la corrección del 8-ago-2026.** Este módulo decía acá que el medio
+iba sin texto a propósito —"esto se escucha con los ojos cerrados"— y aclaraba, bien,
+que era una decisión y no una medición: de los 14 canales se midió que ninguno sube
+pista de subtítulos, y eso no dice nada sobre texto quemado en el cuadro. Pablo decidió
+lo contrario y ahora el cuerpo va subtitulado de punta a punta. Los tiempos **no se
+estiman**: salen de la alineación por caracter de ElevenLabs, la misma pieza con la que
+el narrador de cuentos corta su toma continua. Ver `render.subtitulos`.
 
-**Y es una decisión, no una medición: hay que decirlo así.** De los 14 canales se midió
-que **ninguno sube subtítulos propios** (`caption: false` en los 14), y eso NO es lo
-mismo — una pista de subtítulos que se prende y se apaga no dice nada sobre si el video
-lleva texto quemado en el cuadro. Sobre eso no hay dato. Si Pablo quiere el texto del
-devocional en pantalla, es agregar una capa más con el mismo `_texto()`: el tratamiento
-ya es el correcto y está resuelto acá abajo.
+**Y el título ya no se dice en voz alta.** Ninguno de los cinco canales del nicho que se
+transcribieron lo hace. Como no hay audio del título, cuánto queda en pantalla se
+calcula por velocidad de lectura: ver `LECTURA_POR_SEGUNDO`.
 
 Se hereda tal cual del short lo que ya se ganó ahí, porque son los mismos errores:
 
@@ -53,21 +60,34 @@ Se hereda tal cual del short lo que ya se ganó ahí, porque son los mismos erro
 from __future__ import annotations
 
 import logging
+import math
 import shutil
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
 
 from engine.core.constants import COLA_FINAL_S
 from engine.core.enums import AspectRatio, StoryStatus
 from engine.core.exceptions import DomainError
-from engine.core.models.audio import AudioTrack
 from engine.core.models.story import Story
+from engine.generators.narrator import _limpio
+from engine.generators.still_narrator import NarracionLarga
+from engine.render.subtitulos import (
+    RENGLONES as RENGLONES_POR_SUBTITULO,
+)
+from engine.render.subtitulos import (
+    Subtitulo,
+    caracteres_por_linea,
+    escribir_ass,
+    subtitulos_de,
+)
 from engine.render.video import (
     CONTORNO,
     FUENTE,
     LOUDNESS,
     TAMANO,
     Y_DEL_CIERRE,
+    _encadenar,
     _envolver,
 )
 
@@ -82,12 +102,47 @@ logger = logging.getLogger(__name__)
 #: sin objetar; lo que no acepta es un video de una hora que tardó dos en salir.
 FPS_IMAGEN_FIJA = 10
 
-#: Cuánto queda el título en pantalla después de que se termina de decir.
+#: Cuánto queda el título en pantalla después de que se termina de leer.
 #:
 #: El short lo saca apenas se dice porque cada segundo cuenta. Acá no: quien llega a un
 #: devocional de media hora lo eligió por el título, y dejarlo dos segundos más es lo
 #: que le confirma que abrió lo que buscaba.
 COLA_DEL_TITULO_S = 2.0
+
+#: Caracteres que alguien lee por segundo en una pantalla, para un título grande.
+#:
+#: Existe porque **el título ya no se narra** y antes su placa duraba lo que tardaba en
+#: decirse. Sin audio hay que estimar, y acá estimar está bien: si sobra un segundo el
+#: título se ve un segundo de más, que no rompe nada. No se usa para nada que tenga que
+#: caer sincronizado — eso se mide con la alineación.
+#:
+#: 12 c/s es lectura cómoda para un texto grande y centrado, más lento que los ~20 c/s
+#: de lectura de corrido: acá el espectador recién abrió el video y todavía está
+#: acomodándose.
+LECTURA_POR_SEGUNDO = 12.0
+
+#: Lo menos que dura el título en pantalla, por corto que sea.
+TITULO_MINIMO_S = 6.0
+
+#: Cada cuánto cambia la imagen. **Cinco minutos.**
+#:
+#: Pablo, 8-ago-2026, mirando el devocional de una sola imagen: *"que las imágenes vayan
+#: rotando, una cada cinco minutos más o menos"*. En veinte minutos son cuatro.
+#:
+#: No hay storyboard ni verificador de anatomía detrás de esto, y es lo que lo hace
+#: barato: **las imágenes de este formato no son escenas, son ambientes**. Ninguna
+#: continúa a la anterior, así que no hay continuidad que romper. Cuatro imágenes de
+#: calidad `low` cuestan US$ 0,02 contra los US$ 0,72 de voz de un video de veinte
+#: minutos — el 2,7 % del costo.
+IMAGEN_CADA_S = 300.0
+
+#: Cuánto dura el fundido cruzado entre una imagen y la siguiente. **Dos segundos.**
+#:
+#: Diez veces más largo que el del short (0,4 s), y por la razón contraria: allá la
+#: escena dura cinco segundos y medio segundo de cruce se siente lento; acá la imagen
+#: estuvo cinco minutos quieta y un cruce corto se ve como un corte de cámara. Lo que
+#: se está vendiendo es quietud.
+TRANSICION_LARGA_S = 2.0
 
 #: Cuánto antes de que la voz lo diga aparece la invitación.
 #:
@@ -105,7 +160,7 @@ LARGO_DE_LINEA_ANCHA = 38
 
 
 class StillRenderer:
-    """Arma el MP4 largo: una imagen quieta, la narración entera y dos textos."""
+    """Arma el MP4 largo: paisajes que rotan, la narración entera y su texto."""
 
     def __init__(
         self, *, aspect: AspectRatio = AspectRatio.HORIZONTAL, fps: int = FPS_IMAGEN_FIJA
@@ -120,26 +175,46 @@ class StillRenderer:
         story: Story,
         dest: str | Path,
         *,
-        imagen: str | Path,
-        cuerpo: list[AudioTrack],
+        imagenes: Sequence[str | Path],
+        narracion: NarracionLarga,
     ) -> Path:
         """Devuelve la ruta del MP4.
 
-        `imagen` y `cuerpo` vienen por parámetro y no de `story` a propósito: en este
-        formato la imagen no pertenece a ninguna escena y un bloque de audio tampoco.
-        Colgarlos de `story.scenes[0]` sería dejar escrito que esa imagen es de la
-        primera escena, que es exactamente lo que no es.
+        `imagenes` y `narracion` vienen por parámetro y no de `story` a propósito: en
+        este formato una imagen no pertenece a ninguna escena y un bloque de audio
+        tampoco. Colgarlos de `story.scenes[0]` sería dejar escrito que esa imagen es de
+        la primera escena, que es exactamente lo que no es.
+
+        Se aceptan las imágenes que haya: con una, el video queda como el del 8-ago; con
+        cuatro, rotan. `cuantas_imagenes()` dice cuántas pedir para una duración dada.
         """
-        png = Path(imagen)
-        self._verificar(story, png, cuerpo)
+        pngs = [Path(x) for x in imagenes]
+        self._verificar(story, pngs, narracion)
         salida = Path(dest)
         salida.parent.mkdir(parents=True, exist_ok=True)
 
-        pistas = [*story.title_audio, *cuerpo, *story.closing_audio]
+        pistas = narracion.pistas
         total = sum(t.duration_s for t in pistas) + COLA_FINAL_S
 
+        # --- las imágenes, repartidas y encadenadas -----------------------------
+        # Cada tramo se genera MÁS LARGO que su parte, porque el cruce con el siguiente
+        # se come `TRANSICION_LARGA_S`. Es el mismo margen que usa el short y por la
+        # misma razón: sin él la imagen se va antes de tiempo.
+        parte = total / len(pngs)
+        entradas: list[str] = []
+        filtros: list[str] = []
+        tramos: list[str] = []
+        for i, png in enumerate(pngs):
+            entradas += [
+                "-loop", "1", "-t", f"{parte + TRANSICION_LARGA_S:.3f}", "-i", str(png)
+            ]
+            filtros.append(f"[{i}:v]{self._encuadrar()}[v{i}]")
+            tramos.append(f"[v{i}]")
+        cadena_v = _encadenar(tramos, [parte] * len(pngs), TRANSICION_LARGA_S)
+
         # --- cuándo se ve cada texto -------------------------------------------
-        titulo_hasta = sum(t.duration_s for t in story.title_audio) + COLA_DEL_TITULO_S
+        # El título ya no se narra: su placa dura lo que se tarda en LEERLO.
+        titulo_hasta = _lectura_s(story.metadata.title or "") + COLA_DEL_TITULO_S
         invitacion_desde = max(
             0.0,
             total - COLA_FINAL_S
@@ -147,7 +222,7 @@ class StillRenderer:
             - ADELANTO_DE_LA_INVITACION_S,
         )
 
-        capas = [self._encuadrar()]
+        capas: list[str] = []
         if story.metadata.title:
             capas.append(
                 self._texto(
@@ -168,22 +243,35 @@ class StillRenderer:
                     desde=invitacion_desde,
                 )
             )
+        # Los subtítulos van DESPUÉS del título y de la invitación en la cadena, así que
+        # si alguna vez se solaparan, el renglón medido queda arriba y no tapado.
+        if subs := self._subtitulos(story, narracion):
+            ass = escribir_ass(
+                subs, salida.parent / "_subtitulos.ass",
+                ancho=self._ancho, alto=self._alto,
+            )
+            capas.append(f"ass=filename={_para_filtro(ass)}")
         arranque = max(0.0, total - COLA_FINAL_S)
         capas.append(f"fade=t=out:st={arranque:.3f}:d={COLA_FINAL_S}")
 
         # --- el audio: los bloques pegados, y recién ahí normalizado ------------
-        entradas = ["-loop", "1", "-t", f"{total:.3f}", "-i", str(png)]
+        base = len(pngs)
         entradas += [x for t in pistas for x in ("-i", t.path)]
-        pegado = "".join(f"[{i}:a]" for i in range(1, len(pistas) + 1))
-        filtro = (
-            f"[0:v]{','.join(capas)}[video];"
-            f"{pegado}concat=n={len(pistas)}:v=0:a=1[unido];"
-            f"[unido]apad=pad_dur={COLA_FINAL_S},{LOUDNESS}[audio]"
+        pegado = "".join(f"[{base + i}:a]" for i in range(len(pistas)))
+        filtro = ";".join(
+            [
+                *filtros,
+                f"{cadena_v};[vcrudo]{','.join(capas)}[video]",
+                f"{pegado}concat=n={len(pistas)}:v=0:a=1[unido]",
+                f"[unido]apad=pad_dur={COLA_FINAL_S},{LOUDNESS}[audio]",
+            ]
         )
 
         logger.info(
-            "Render fijo: %s pista(s) · %.1f min · %sx%s a %s fps",
-            len(pistas), total / 60, self._ancho, self._alto, self._fps,
+            "Render largo: %s imagen(es) de %.1f min · %s pista(s) · %.1f min · "
+            "%s subtítulos · %sx%s a %s fps",
+            len(pngs), parte / 60, len(pistas), total / 60, len(subs),
+            self._ancho, self._alto, self._fps,
         )
         subprocess.run(
             ["ffmpeg", "-y", *entradas, "-filter_complex", filtro,
@@ -202,10 +290,41 @@ class StillRenderer:
         return salida
 
     # ------------------------------------------------------------------------
+    def _subtitulos(self, story: Story, narracion: NarracionLarga) -> list[Subtitulo]:
+        """Los renglones de todo el cuerpo, con los segundos medidos del audio.
+
+        El `offset` de cada bloque es cuánto audio va antes: los tiempos de la
+        alineación son relativos a su pedido y el video es uno solo.
+
+        **Del cierre se subtitula la promesa pero NO la invitación**, y no es un
+        olvido: la invitación ya se dibuja grande y sola con `Y_DEL_CIERRE`, que es el
+        tratamiento que se le da al CTA porque es la línea que sostiene el nicho.
+        Subtitularla además sería el mismo texto dos veces en pantalla.
+        """
+        ancho = caracteres_por_linea(self._ancho)
+        maximo = ancho * RENGLONES_POR_SUBTITULO
+        subs: list[Subtitulo] = []
+        offset = 0.0
+        for bloque in narracion.cuerpo:
+            subs += subtitulos_de(
+                bloque.pista.text, bloque.marcas, offset_s=offset, maximo=maximo
+            )
+            offset += bloque.pista.duration_s
+        if narracion.cierre and story.moral:
+            subs += subtitulos_de(
+                _limpio(story.moral),
+                narracion.cierre.marcas,
+                offset_s=offset,
+                maximo=maximo,
+            )
+        return subs
+
     def _encuadrar(self) -> str:
+        # `fps` acá y no sólo en la salida: `xfade` exige que los dos tramos que cruza
+        # tengan el mismo framerate, y sin fijarlo un PNG en bucle entra a 25.
         return (
             f"scale={self._ancho}:{self._alto}:force_original_aspect_ratio=increase,"
-            f"crop={self._ancho}:{self._alto},setsar=1"
+            f"crop={self._ancho}:{self._alto},setsar=1,fps={self._fps}"
         )
 
     def _texto(
@@ -243,19 +362,22 @@ class StillRenderer:
             f"x=(w-text_w)/2:y={y}{ventana}"
         )
 
-    def _verificar(self, story: Story, imagen: Path, cuerpo: list[AudioTrack]) -> None:
+    def _verificar(
+        self, story: Story, imagenes: list[Path], narracion: NarracionLarga
+    ) -> None:
         """Falla antes de invocar a ffmpeg, con un mensaje que se entiende.
 
         Vale más acá que en el short: un devocional largo llega a este paso con media
         hora de TTS ya pagada, y un error de ffmpeg de treinta líneas de jerga sobre
         algo ya gastado es la peor forma de enterarse.
         """
-        if not imagen.is_file():
-            raise DomainError(f"No está la imagen del video: {imagen}")
-        if not cuerpo:
+        if not imagenes:
+            raise DomainError("No hay ninguna imagen: el video no tendría qué mostrar.")
+        if faltan := [str(p) for p in imagenes if not p.is_file()]:
+            raise DomainError(f"No están estas imágenes del video: {faltan}")
+        if not narracion.cuerpo:
             raise DomainError("No hay audio del cuerpo: hay que narrar antes de renderizar.")
-        faltan = [t.path for t in cuerpo if not Path(t.path).is_file()]
-        if faltan:
+        if faltan := [t.path for t in narracion.pistas if not Path(t.path).is_file()]:
             raise DomainError(f"Faltan archivos de audio en el disco: {faltan}")
         if not Path(FUENTE).exists():
             raise DomainError(f"Falta la tipografía {FUENTE}: el título y el cierre la usan.")
@@ -265,3 +387,30 @@ class StillRenderer:
             logger.warning(
                 "El guion tiene invitación pero no se narró: va a aparecer escrita y muda."
             )
+
+
+def cuantas_imagenes(duracion_s: float, cada_s: float = IMAGEN_CADA_S) -> int:
+    """Cuántas imágenes pedir para un devocional de esta duración.
+
+    Se redondea hacia arriba y nunca baja de una: un video de siete minutos lleva dos
+    —una de cinco y otra de dos— antes que una sola quieta siete minutos. El "más o
+    menos" del pedido de Pablo vive acá: con veinte minutos exactos da cuatro, y con
+    veintidós da cinco de 4,4 minutos, no cuatro de cinco y una de dos.
+    """
+    return max(1, math.ceil(duracion_s / cada_s))
+
+
+def _lectura_s(texto: str) -> float:
+    """Cuánto tarda alguien en leer un título en pantalla."""
+    return max(TITULO_MINIMO_S, len(texto) / LECTURA_POR_SEGUNDO)
+
+
+def _para_filtro(ruta: Path) -> str:
+    """Una ruta escrita para adentro de un `-filter_complex`.
+
+    En la sintaxis de filtros de ffmpeg los dos puntos separan parámetros y la barra
+    invertida escapa: una ruta con cualquiera de los dos rompe el filtro entero con un
+    error que habla de otra cosa. Las rutas del motor no los traen, pero el `.ass` se
+    escribe al lado del MP4 y ese destino lo elige quien llama.
+    """
+    return str(ruta).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")

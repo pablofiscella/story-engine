@@ -121,7 +121,9 @@ def _envolver(texto: str, largo: int = LARGO_DE_LINEA) -> list[str]:
     return lineas or [""]
 
 
-def _encadenar(tramos: list[str], duraciones: list[float]) -> str:
+def _encadenar(
+    tramos: list[str], duraciones: list[float], transicion: float = TRANSICION_S
+) -> str:
     """Los tramos de video, unidos con un fundido cruzado entre cada par.
 
     `xfade` cruza de a dos, así que hay que encadenarlo: el resultado de un cruce es
@@ -132,6 +134,11 @@ def _encadenar(tramos: list[str], duraciones: list[float]) -> str:
     una presentación de diapositivas. El motor viejo tenía el mismo cruce (0.4s) en
     el camino de Remotion y lo perdió en el camino de ffmpeg, donde los tramos se
     pegaban con `concat -c copy`.
+
+    `transicion` es parámetro y no la constante porque los dos formatos del motor
+    quieren cosas distintas: en un short de cinco segundos por escena, medio segundo de
+    cruce ya se siente lento; en un devocional donde la imagen dura cinco minutos, un
+    cruce corto se ve como un corte y rompe la quietud que es todo el producto.
     """
     if len(tramos) == 1:
         return f"{tramos[0]}null[vcrudo]"
@@ -141,10 +148,10 @@ def _encadenar(tramos: list[str], duraciones: list[float]) -> str:
     anterior = tramos[0]
     for i, tramo in enumerate(tramos[1:], start=1):
         etiqueta = "[vcrudo]" if i == len(tramos) - 1 else f"[x{i}]"
-        offset = max(0.0, acumulado - TRANSICION_S)
+        offset = max(0.0, acumulado - transicion)
         partes.append(
             f"{anterior}{tramo}xfade=transition=fade:"
-            f"duration={TRANSICION_S}:offset={offset:.3f}{etiqueta}"
+            f"duration={transicion}:offset={offset:.3f}{etiqueta}"
         )
         acumulado += duraciones[i] if i < len(duraciones) else 0.0
         anterior = etiqueta

@@ -49,7 +49,23 @@ SHOT_BY_BEAT: MappingProxyType[NarrativeBeat, ShotType] = MappingProxyType(
 
 # --- Duración -------------------------------------------------------------------
 MIN_STORY_DURATION_S = 15
-MAX_STORY_DURATION_S = 600
+
+#: Lo más que puede durar una pieza. **Una hora**, y era diez minutos.
+#:
+#: Los 600 s venían del único producto que existía cuando se escribió esto: un cuento
+#: para chicos, donde diez minutos ya es larguísimo. El formato largo del nicho
+#: devocional vive del otro lado — los 8 canales medidos el 8-ago-2026 tienen medianas
+#: de 31 a 158 minutos, y The Gentle Bible publica videos de cuatro horas.
+#:
+#: Se sube a 3600 y no a infinito porque un número redondo que nadie eligió es cómo se
+#: cuelan los errores caros: un 12000 por un 1200 son diez veces la cuota mensual de
+#: ElevenLabs gastada de una. Una hora es más de lo que Pablo va a publicar y sigue
+#: siendo un tope que se nota si se lo cruza por accidente.
+#:
+#: **El techo real de un devocional no es éste**, y conviene decirlo acá: es cuántas
+#: instrucciones distintas tiene el perfil de la necesidad
+#: (`instrucciones_distintas()`). Este número sólo evita el disparate.
+MAX_STORY_DURATION_S = 3600
 DEFAULT_STORY_DURATION_S = 30
 
 MIN_SCENE_DURATION_S = 2.0

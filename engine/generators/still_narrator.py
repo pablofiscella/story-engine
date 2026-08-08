@@ -5,12 +5,27 @@ Es el hermano de `narrator.py` para el otro formato del nicho. El de cuentos gra
 imagen cambia y hay que saber exactamente cuándo. Acá la imagen NO cambia nunca, y esa
 única diferencia se lleva puesta media arquitectura:
 
-- **No hace falta alineación.** No hay nada que sincronizar: lo único que se necesita
-  es el audio en orden.
 - **No hace falta una toma sola.** Y menos mal, porque **no entra**: ver
   `LIMITE_DE_PEDIDO`.
 - **No hace falta pausa entre escenas.** Las "escenas" del formato largo son párrafos
   de un mismo texto corrido; el silencio lo pone la puntuación.
+
+**LA ALINEACIÓN SÍ HACE FALTA, y ese es el cambio del 8-ago-2026.** Cuando este módulo
+se escribió, decía acá que no: con una imagen fija no había nada que sincronizar. Pablo
+miró el devocional terminado y pidió *"subtítulos durante todo el audio"*, y con eso
+volvió a haber algo que sincronizar — más fino que antes, incluso: no dónde cambia la
+imagen cada cinco minutos, sino dónde cambia el renglón cada tres segundos. Así que
+cada bloque se pide por `/with-timestamps` y se devuelve **con** sus marcas. Cuesta lo
+mismo: es otro endpoint del mismo pedido, no un pedido más.
+
+**Y EL TÍTULO YA NO SE DICE.** Se lo anunciaba porque el narrador de cuentos lo hace, y
+ahí es una decisión de Pablo (*"aparece el título pero no habla en ningún video"*). Acá
+es un error importado: de los cinco canales del nicho que se transcribieron el
+8-ago-2026, **ninguno anuncia el título**. Arrancan adentro del estado —*"Heavenly
+Father, this morning I come before you…"*, *"Before you rush into this day, stop for
+just one moment"*—, y el nuestro abría leyendo *"Before This Day Begins: A Morning
+Prayer for a Tired Heart"*, que suena a locutor presentando un programa. El título
+sigue **viéndose** en pantalla; lo que se sacó es la voz.
 
 POR QUÉ EXISTE, con el dato que lo justifica: los 14 canales del nicho devocional
 medidos el 8-ago-2026 tienen DOS formatos, y **el que más vistas junta por video es el
@@ -49,11 +64,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from engine.core.enums import AudioKind, StoryStatus
 from engine.core.exceptions import DomainError
-from engine.core.interfaces import VoiceProvider
+from engine.core.interfaces import Alineacion, VoiceProvider
 from engine.core.models.audio import AudioTrack
 from engine.core.models.story import Story
 from engine.core.retry import con_reintentos
@@ -61,10 +77,9 @@ from engine.generators.narrator import (
     COLCHON_FINAL,
     PISO_DE_TOMA,
     _limpio,
-    _titulo_dicho,
+    _sabe_alinear,
     duracion_de_wav,
 )
-from engine.prompts import voz as prompts_voz
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +108,46 @@ BLOQUE_OBJETIVO = 3500
 CONCURRENCIA = 1
 
 
+@dataclass(frozen=True, slots=True)
+class BloqueNarrado:
+    """Una pista de audio y, pegado a ella, en qué segundo cae cada caracter.
+
+    Van juntos y no en dos listas paralelas por una razón concreta: los subtítulos se
+    arman recorriendo bloques, y una pista con las marcas del bloque de al lado
+    produciría un video **perfectamente sincronizado con el texto equivocado**. Es el
+    tipo de error que no se ve mirando un fotograma.
+    """
+
+    pista: AudioTrack
+    marcas: Alineacion
+
+
+@dataclass(frozen=True, slots=True)
+class NarracionLarga:
+    """Todo el audio de un devocional largo, en orden y con sus marcas.
+
+    El cierre viene aparte del cuerpo porque el render lo trata distinto: el cuerpo
+    lleva subtítulos y el cierre lleva la placa de la invitación, que es el CTA que
+    sostiene el nicho y tiene su propio tratamiento.
+    """
+
+    cuerpo: list[BloqueNarrado] = field(default_factory=list)
+    cierre: BloqueNarrado | None = None
+
+    @property
+    def bloques(self) -> list[BloqueNarrado]:
+        return [*self.cuerpo, *([self.cierre] if self.cierre else [])]
+
+    @property
+    def pistas(self) -> list[AudioTrack]:
+        """Las pistas en el orden en que suenan. Es lo que consume el render."""
+        return [b.pista for b in self.bloques]
+
+    @property
+    def duracion_s(self) -> float:
+        return sum(p.duration_s for p in self.pistas)
+
+
 class StillNarrator:
     """Narra un guion largo en bloques, para un video de imagen fija."""
 
@@ -110,16 +165,18 @@ class StillNarrator:
         self._direccion = direccion
         self._bloque = bloque_objetivo
 
-    async def narrate(self, story: Story, dest_dir: str | Path) -> list[AudioTrack]:
-        """Narra el guion. Devuelve las pistas del CUERPO, en orden y ya medidas.
+    async def narrate(self, story: Story, dest_dir: str | Path) -> NarracionLarga:
+        """Narra el guion. Devuelve el audio en orden, medido y con sus marcas.
 
-        El título y el cierre no vienen en esa lista: se dejan en `story.title_audio` y
-        `story.closing_audio`, igual que en los cuentos. **Y se piden en su propio
-        bloque**, que es la decisión menos obvia del método: mezclados adentro del
-        primero y del último no se sabría cuánto duran, y el render necesita ese número
-        para saber cuánto tiempo dejar el título en pantalla y cuándo hacer aparecer el
-        pedido de comentario. Sin alineación por caracter —que este formato no usa— la
-        única forma de saber cuánto dura una frase es pedirla sola y medirla.
+        **El título no se narra**: en este nicho no se anuncia (ver el encabezado del
+        módulo). Sigue apareciendo en pantalla; cuánto dura ahí lo decide el render, que
+        es el que sabe leer, y no el narrador, que ya no tiene nada que decir al
+        respecto. `story.title_audio` queda vacío a propósito.
+
+        El cierre sí se pide en su propio bloque, y ésa es la decisión menos obvia del
+        método: mezclado adentro del último no se sabría cuándo empieza, y el render
+        necesita ese número para hacer aparecer el pedido de comentario justo cuando se
+        dice. Pedirlo solo también deja su alineación limpia.
 
         No toca `story.scenes[i].audio` a propósito: en este formato un bloque no
         corresponde a una escena, así que colgarlo de una sería mentir sobre lo que ese
@@ -127,20 +184,22 @@ class StillNarrator:
         """
         if not story.scenes:
             raise DomainError("El guion no tiene escenas: no hay nada que narrar.")
+        if not _sabe_alinear(self._provider):
+            raise DomainError(
+                "El proveedor de voz no devuelve alineación por caracter, y sin ella "
+                "los subtítulos habría que estimarlos. En un video de veinte minutos "
+                "una estimación se corre varios segundos: se prefiere no generarlo."
+            )
 
         destino = Path(dest_dir)
         destino.mkdir(parents=True, exist_ok=True)
         limite = asyncio.Semaphore(CONCURRENCIA)
 
-        async def pedir(nombre: str, texto: str) -> AudioTrack:
+        async def pedir(nombre: str, texto: str) -> BloqueNarrado:
             async with limite:
                 return await self._un_bloque(nombre, texto, destino)
 
-        if titulo := _titulo_dicho(story):
-            story.title_audio = [
-                await pedir("titulo", prompts_voz.COLCHON_INICIAL + " " + titulo)
-            ]
-
+        story.title_audio = []
         bloques = self._armar_bloques([_limpio(e.narration) for e in story.scenes])
         logger.info(
             "Formato largo: %s escenas en %s bloque(s) de hasta %s caracteres.",
@@ -151,12 +210,14 @@ class StillNarrator:
         # El cierre va en UNA pista y no en dos —promesa e invitación juntas— porque
         # se dicen seguidas y partirlas metería un corte de prosodia justo antes de la
         # línea que pide el comentario, que es la que sostiene el nicho.
-        if cierre := " ".join(_limpio(t) for t in (story.moral, story.closing_question) if t):
-            story.closing_audio = [await pedir("cierre", cierre)]
+        cierre = None
+        if texto := " ".join(_limpio(t) for t in (story.moral, story.closing_question) if t):
+            cierre = await pedir("cierre", texto)
+            story.closing_audio = [cierre.pista]
 
         _marcar_narrada(story)
         story.metadata.touch()
-        return cuerpo
+        return NarracionLarga(cuerpo=cuerpo, cierre=cierre)
 
     # ------------------------------------------------------------------ estructura
     def _armar_bloques(self, piezas: list[str]) -> list[str]:
@@ -182,8 +243,8 @@ class StillNarrator:
         return bloques
 
     # ---------------------------------------------------------------------- pedido
-    async def _un_bloque(self, nombre: str, texto: str, destino: Path) -> AudioTrack:
-        """Pide un bloque, lo mide y lo guarda.
+    async def _un_bloque(self, nombre: str, texto: str, destino: Path) -> BloqueNarrado:
+        """Pide un bloque —con las marcas—, lo mide y lo guarda.
 
         El guardián de toma cortada es el mismo que el de los cuentos y por la misma
         razón medida: cuando el proveedor devuelve la mitad del audio **no falla** —
@@ -198,8 +259,10 @@ class StillNarrator:
                 f"pedido es {LIMITE_DE_PEDIDO}. Hay que bajar `bloque_objetivo`."
             )
 
-        audio = await con_reintentos(
-            lambda: self._provider.synthesize(pedido, audio_format="wav"),
+        audio, marcas = await con_reintentos(
+            lambda: self._provider.synthesize_aligned(  # type: ignore[attr-defined]
+                pedido, audio_format="wav"
+            ),
             al_reintentar=lambda n, e: logger.warning(
                 "Bloque %s: la voz falló (%s). Reintento %s.", nombre, e, n
             ),
@@ -217,11 +280,14 @@ class StillNarrator:
             )
 
         logger.info("Bloque %s: %s caracteres · %.1fs", nombre, len(texto), duracion)
-        return AudioTrack(
-            kind=AudioKind.NARRATION,
-            text=texto,
-            path=str(ruta),
-            duration_s=duracion,
+        return BloqueNarrado(
+            pista=AudioTrack(
+                kind=AudioKind.NARRATION,
+                text=texto,
+                path=str(ruta),
+                duration_s=duracion,
+            ),
+            marcas=marcas,
         )
 
 
@@ -265,11 +331,13 @@ def caracteres_de(story: Story) -> int:
     30.000 caracteres por media hora de audio, la diferencia entre estimar y medir es
     la diferencia entre un video y un mes de cuota.
 
-    Cuenta lo mismo que se va a mandar —título, escenas, promesa e invitación— pero no
-    la dirección de actuación ni el colchón, que dependen de en cuántos bloques caiga.
-    El error es de menos de un 2 %.
+    Cuenta lo mismo que se va a mandar —escenas, promesa e invitación— pero no la
+    dirección de actuación ni el colchón, que dependen de en cuántos bloques caiga. El
+    error es de menos de un 2 %.
+
+    **El título no está en la cuenta porque ya no se narra**: en este nicho no se
+    anuncia. Es lo único que se paga menos que antes.
     """
-    piezas = [_titulo_dicho(story)]
-    piezas += [_limpio(e.narration) for e in story.scenes]
+    piezas = [_limpio(e.narration) for e in story.scenes]
     piezas += [_limpio(t) for t in (story.moral, story.closing_question) if t]
     return sum(len(p) for p in piezas if p)
