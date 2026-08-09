@@ -472,7 +472,12 @@ async def test_el_titulo_se_va_y_la_invitacion_llega_al_final(
     original = modulo.subprocess.run
 
     def espiar(cmd, **kw):
-        llamada["filtro"] = cmd[cmd.index("-filter_complex") + 1]
+        # Sólo la llamada del VIDEO. `modulo.subprocess` es el módulo compartido, así
+        # que esto parchea a todo el que use subprocess, no sólo a `still`: desde el
+        # 9-ago-2026 el render compone además la miniatura, y quedarse con la última
+        # llamada era quedarse con la de la portada.
+        if "-filter_complex" in cmd:
+            llamada["filtro"] = cmd[cmd.index("-filter_complex") + 1]
         return original(cmd, **kw)
 
     modulo.subprocess.run = espiar
@@ -688,7 +693,12 @@ async def test_con_varias_imagenes_hay_fundido_cruzado_y_no_corte(
     original = modulo.subprocess.run
 
     def espiar(cmd, **kw):
-        llamada["filtro"] = cmd[cmd.index("-filter_complex") + 1]
+        # Sólo la llamada del VIDEO. `modulo.subprocess` es el módulo compartido, así
+        # que esto parchea a todo el que use subprocess, no sólo a `still`: desde el
+        # 9-ago-2026 el render compone además la miniatura, y quedarse con la última
+        # llamada era quedarse con la de la portada.
+        if "-filter_complex" in cmd:
+            llamada["filtro"] = cmd[cmd.index("-filter_complex") + 1]
         return original(cmd, **kw)
 
     modulo.subprocess.run = espiar

@@ -32,6 +32,12 @@ LO QUE SE VE, y cuándo:
     el título      los primeros segundos, arriba — SIN que nadie lo diga
     los subtítulos todo el cuerpo, abajo, sincronizados con la voz
     la invitación  cuando empieza a decirse, y hasta el final
+    la miniatura   fuera del video: es la portada con la que se lo elige
+
+**La miniatura sale de acá y no de un paso aparte** (9-ago-2026). En un Short la portada
+casi no importa —se muestra sola en el feed—, pero un video largo hay que **elegirlo**
+de una grilla, y la miniatura es lo único que decide ese clic. Se compone con una imagen
+que el video ya usa, así que no cuesta nada. Ver `render.miniatura`.
 
 **Los subtítulos son la corrección del 8-ago-2026.** Este módulo decía acá que el medio
 iba sin texto a propósito —"esto se escucha con los ojos cerrados"— y aclaraba, bien,
@@ -72,6 +78,7 @@ from engine.core.exceptions import DomainError
 from engine.core.models.story import Story
 from engine.generators.narrator import _limpio
 from engine.generators.still_narrator import NarracionLarga
+from engine.render.miniatura import IMAGEN_DE_PORTADA, miniatura_de, render_miniatura
 from engine.render.subtitulos import (
     RENGLONES as RENGLONES_POR_SUBTITULO,
 )
@@ -276,6 +283,17 @@ class StillRenderer:
              "-c:a", "aac", "-b:a", "128k", "-shortest", str(salida)],
             check=True, capture_output=True,
         )
+        # La portada sale con el video y no aparte. Un video largo sin miniatura propia
+        # es un video que YouTube ilustra con un fotograma al azar —en este formato, un
+        # paisaje quieto con medio subtítulo—, y el 6-ago-2026 ya costó una vuelta la
+        # regla de que **subir un asset no es entregarlo**: si la portada dependiera de
+        # que alguien se acuerde de generarla, el día que se olvide no falla nada, sale
+        # el video sin ella. Ver `render.miniatura`.
+        if story.metadata.title:
+            render_miniatura(
+                story.metadata.title, pngs[IMAGEN_DE_PORTADA], miniatura_de(salida)
+            )
+
         # Sólo si venía de narrar. Re-renderizar algo ya renderizado es normal en este
         # formato —se cambia la imagen o el texto de pantalla sin tocar el audio— y no
         # tiene por qué romper por el rótulo.
