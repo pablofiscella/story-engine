@@ -330,3 +330,53 @@ async def test_sin_titulo_narrado_la_placa_sigue_siendo_muda(
          "-of", "csv=p=0", str(salida)],
         capture_output=True, text=True, check=True).stdout.strip())
     assert real > 0
+
+
+@sin_ffmpeg
+def test_el_cierre_se_ancla_por_ABAJO_y_no_por_arriba(tmp_path) -> None:
+    """La última palabra del CTA quedó cortada por el borde inferior (7-ago-2026).
+
+    El texto del cierre se posicionaba con `y="h*0.80"`, que es dónde EMPIEZA el
+    bloque. Como crece hacia abajo, cada línea de más lo empuja fuera del cuadro. Con
+    los cuentos no se vio nunca: su pregunta final entra en dos líneas de español. La
+    invitación del primer devocional —*"If your mind has been loud lately, type AMEN so
+    I can pray for you by name"*— ocupa **cinco**, y salió con "name." partida al medio
+    por el borde.
+
+    No es una imperfección estética: el nicho se eligió por su 1,718 % de comentarios,
+    el más alto de los cinco medidos, y lo único ilegible del video era justo la línea
+    que los pide.
+
+    Anclar por `text_h` lo arregla para cualquier largo **sin estimar** cuánto mide una
+    línea de DejaVu. Ahí estaba el error de fondo: el tamaño de letra sí se calculaba
+    (por el ANCHO), pero el alto del bloque se daba por sentado.
+    """
+    from engine.render.video import Y_DEL_CIERRE, _envolver
+
+    assert "text_h" in Y_DEL_CIERRE, "el cierre volvió a anclarse por el borde de arriba"
+
+    invitacion = "If your mind has been loud lately, type AMEN so I can pray for you by name."
+    assert len(_envolver(invitacion)) >= 5, "el caso que lo rompió ya no se parte igual"
+
+
+@sin_ffmpeg
+def test_el_cierre_termina_dentro_del_cuadro_con_cualquier_largo(tmp_path) -> None:
+    """La otra mitad: el arreglo no puede depender de estimar cuánto mide una línea.
+
+    El primer intento de este test comparaba contra una altura de bloque calculada a
+    mano (`lineas * fontsize + espaciado`) y daba 11,6 px de diferencia. Estaba mal
+    planteado: **esa cuenta es exactamente la que el bug demostró que no se puede
+    hacer** — ffmpeg dibuja una línea más alta que su `fontsize`, y por eso los 1912
+    px "calculados" del cierre roto en realidad se salían del cuadro.
+
+    Lo que sí se puede afirmar sin estimar nada: con el ancla escrita como
+    `<fracción de h> - text_h`, el bloque TERMINA en esa fracción sea cual sea su
+    altura, y la fracción es menor que 1. El que mide `text_h` es ffmpeg.
+    """
+    from engine.render.video import Y_DEL_CIERRE
+
+    assert Y_DEL_CIERRE.endswith("-text_h"), (
+        "el cierre tiene que anclarse por donde TERMINA el bloque"
+    )
+    fraccion = float(Y_DEL_CIERRE.removesuffix("-text_h").removeprefix("h*"))
+    assert 0.5 < fraccion < 1.0, f"el cierre termina en h*{fraccion}, fuera del cuadro"

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Sequence
 
 from engine.core.enums import StoryStatus
 from engine.core.exceptions import ProviderError
@@ -25,6 +26,7 @@ from engine.core.interfaces import TextProvider
 from engine.core.models.scene import Scene
 from engine.core.models.story import Story
 from engine.core.retry import con_reintentos
+from engine.generators.script_inspector import frases_repetidas
 from engine.prompts import image as image_prompts
 from engine.prompts import narration as prompts
 
@@ -41,16 +43,29 @@ class StoryWriter:
     def __init__(self, provider: TextProvider) -> None:
         self._provider = provider
 
-    async def write(self, story: Story) -> Story:
+    async def write(
+        self,
+        story: Story,
+        *,
+        sistema: str | None = None,
+        narra_el_lugar: bool = True,
+    ) -> Story:
         """Escribe todas las escenas de `story` y la deja en estado WRITTEN.
 
         Necesita que la historia ya tenga plan. Devuelve la MISMA historia mutada:
         el plan, el tema y el elenco no se tocan.
+
+        `sistema` permite pasar OTRO prompt de narrador. Existe porque el motor dejó de
+        contar una sola clase de cosa: el prompt por defecto dice "sos un cuentacuentos
+        que narra para chicos de 3 a 5 años" y calibra el vocabulario por edad, que es
+        exactamente lo que no hay que decirle a quien narra una oración para adultos.
+        Es un parámetro y no un `if`: el escritor no tiene por qué saber cuántos
+        géneros existen.
         """
         if story.plan is None:
             raise ValueError("La historia no tiene plan: hay que planificarla antes de escribirla.")
 
-        sistema = prompts.system_prompt(
+        sistema = sistema or prompts.system_prompt(
             language=story.metadata.language,
             age_range=story.metadata.age_range,
             value_moral=story.moral or "",
@@ -58,6 +73,14 @@ class StoryWriter:
         personajes = story.characters_by_id
         escenas: list[Scene] = []
         anterior: str | None = None
+        # Los arranques ya usados, para que la escena 14 no abra como la 3. Sin esto,
+        # diez de veinte escenas del primer devocional largo abrieron con "As…": la
+        # regla del sistema sólo prohíbe repetir a la escena ANTERIOR, y con veinte
+        # escenas eso no alcanza. Ver `scene_prompt`.
+        aperturas: list[str] = []
+        # Las frases que la pieza ya repitió, calculadas con el MISMO detector que usa
+        # el verificador después. Ver `muletillas_ya_usadas`.
+        muletillas: list[str] = []
 
         for plan in story.plan.scenes:
             escena = await self._escribir_escena(
@@ -66,18 +89,80 @@ class StoryWriter:
                 personajes=personajes,
                 anterior=anterior,
                 es_ultima=plan.index == len(story.plan.scenes) - 1,
+                aperturas=aperturas,
+                muletillas=muletillas,
+                narra_el_lugar=narra_el_lugar,
             )
             escena.image_prompt = image_prompts.compose(
                 escena, style=story.style, theme=story.theme, characters=personajes
             )
             escenas.append(escena)
             anterior = escena.narration
+            aperturas.append(apertura_de(escena.narration))
+            muletillas = muletillas_ya_usadas([e.narration for e in escenas])
 
         story.scenes = escenas
         if story.status is StoryStatus.PLANNED:
             story.advance_to(StoryStatus.WRITTEN)
         story.metadata.touch()
         return story
+
+    async def reescribir(
+        self,
+        escena: Scene,
+        story: Story,
+        *,
+        correccion: str = "",
+        sistema: str | None = None,
+        anterior: str | None = None,
+    ) -> Scene:
+        """Vuelve a escribir UNA escena, con una corrección encima.
+
+        Es la hermana de `SceneIllustrator.rehacer`, y existe por la misma razón: el
+        verificador encuentra el problema en una escena y reescribir el guion entero
+        sería tirar todo lo que estaba bien. Devuelve la MISMA escena mutada, con la
+        narración y el subtítulo nuevos — el índice, el beat y la duración no se tocan,
+        así que el plan sigue valiendo.
+
+        `correccion` no es decorativo: **pedir lo mismo otra vez es lo que ya falló**
+        con las tomas de voz que nacían cortadas y con las imágenes de anatomía rota.
+        Al modelo hay que darle una orden realmente distinta, y la orden distinta es el
+        reparo concreto que se leyó en el intento anterior.
+        """
+        sistema = sistema or prompts.system_prompt(
+            language=story.metadata.language,
+            age_range=story.metadata.age_range,
+            value_moral=story.moral or "",
+        )
+        tope = _presupuesto(escena.duration_s)
+        pedido = prompts.scene_prompt(
+            escena,
+            characters=story.characters_by_id,
+            max_words=tope,
+            previous=anterior,
+            is_last=escena.index == len(story.scenes) - 1,
+        )
+        if correccion:
+            pedido = f"{pedido}\n\n{correccion}"
+
+        crudo = await con_reintentos(
+            lambda: self._provider.generate_text(pedido, system=sistema, temperature=0.8),
+            al_reintentar=lambda n, e: logger.warning(
+                "Escena %s: el proveedor de texto falló al reescribir (%s). Reintento %s.",
+                escena.index, e, n,
+            ),
+        )
+        texto = _limpiar(crudo)
+        if not texto:
+            raise ProviderError(
+                f"El escritor devolvió texto vacío al reescribir la escena {escena.index}."
+            )
+        if len(texto.split()) > tope:
+            texto = _recortar(texto, tope)
+
+        escena.narration = texto
+        escena.subtitle = _subtitulo(texto)
+        return escena
 
     # ------------------------------------------------------------------------
     async def _escribir_escena(
@@ -88,6 +173,9 @@ class StoryWriter:
         personajes,
         anterior: str | None,
         es_ultima: bool,
+        aperturas: Sequence[str] = (),
+        muletillas: Sequence[str] = (),
+        narra_el_lugar: bool = True,
     ) -> Scene:
         """Una escena, con reintentos si el texto no entra en su duración."""
         tope = _presupuesto(plan.duration_s)
@@ -97,6 +185,9 @@ class StoryWriter:
             max_words=tope,
             previous=anterior,
             is_last=es_ultima,
+            aperturas=aperturas,
+            muletillas=muletillas,
+            narra_el_lugar=narra_el_lugar,
         )
 
         texto = ""
@@ -127,6 +218,9 @@ class StoryWriter:
                         max_words=tope,
                         previous=anterior,
                         is_last=es_ultima,
+                        aperturas=aperturas,
+                        muletillas=muletillas,
+                        narra_el_lugar=narra_el_lugar,
                     )
                     + prompts.retry_suffix(sobrante, tope)
                 )
@@ -211,3 +305,45 @@ def _subtitulo(texto: str, largo: int = 90) -> str:
         return texto
     corte = texto.rfind(".", 0, largo)
     return texto[: corte + 1] if corte > 20 else texto[: largo - 1].rstrip() + "…"
+
+
+#: Cuántas palabras del arranque se le muestran al escritor como "ya usada".
+#:
+#: Cuatro. Con dos, *"As dawn"* y *"As you"* cuentan como arranques distintos y el
+#: escritor sigue empezando todo igual; con ocho, la lista se vuelve una lista de
+#: frases enteras y **empieza a funcionar como ejemplo en vez de como prohibición** —
+#: la trampa que este motor ya documentó dos veces. Cuatro alcanza para que *"As the
+#: dawn breaks gently"* y *"As the dawn breaks softly"* choquen entre sí.
+PALABRAS_DE_APERTURA = 4
+
+
+def apertura_de(narracion: str) -> str:
+    """Las primeras palabras de una escena, para que ninguna otra empiece igual."""
+    return " ".join(narracion.split()[:PALABRAS_DE_APERTURA])
+
+
+#: Cuántas frases repetidas se le muestran al escritor por pedido.
+#:
+#: Ocho. La lista es una PROHIBICIÓN, y una prohibición de cuarenta renglones deja de
+#: leerse: el modelo la trata como contexto de fondo. Se muestran las que más veces
+#: aparecieron, que son las que están por convertirse en el estribillo del video.
+MULETILLAS_EN_EL_PEDIDO = 8
+
+
+def muletillas_ya_usadas(narraciones: list[str]) -> list[str]:
+    """Las frases que esta pieza ya repitió, para que la próxima escena no las use.
+
+    **Es el guardián de muletillas usado ANTES en vez de sólo después.** El verificador
+    de guion las detecta cuando el guion ya está escrito y manda a reescribir; acá la
+    misma función evita que la frase se propague. La diferencia se ve en el número:
+    sobre el devocional de 20 minutos del 8-ago-2026, *"You are not alone"* llegó a
+    **seis escenas** (0, 2, 4, 7, 15, 18) y el verificador la marcó una vez que ya
+    estaba en las seis. Prohibirla a partir de la tercera corta la propagación.
+
+    Se reusa `frases_repetidas` y no se escribe otra: dos detectores de lo mismo se
+    desincronizan, y el que corrige tiene que estar de acuerdo con el que acusa.
+    """
+    repetidas = frases_repetidas(narraciones)
+    # Las más repetidas primero: son las que están por volverse el estribillo.
+    ordenadas = sorted(repetidas, key=lambda x: (-len(x[1]), x[1][0]))
+    return [frase for frase, _ in ordenadas[:MULETILLAS_EN_EL_PEDIDO]]

@@ -120,7 +120,17 @@ def compose(
         emo = scene.emotion_for(p.id)
         bloques.append(
             f"{p.name}: {p.appearance.prompt_fragment()} "
-            f"{p.expression_for(emo, _actitud(emo))}"
+            f"{p.expression_for(emo, _traductor(style)(emo))}"
+        )
+    # El prompt NEGATIVO del estilo devocional ya decía "faces, close-up hands,
+    # fingers" y no alcanzó: la escena del aprendizaje salió igual como un primer plano
+    # de una cara. **El positivo le gana al negativo**, así que la regla que sostiene al
+    # nicho entero tiene que estar dicha en positivo y acá arriba, junto al personaje.
+    if style.emotion_in_light and presentes:
+        bloques.append(
+            "LA FIGURA SE VE SIEMPRE DE ESPALDAS, LEJOS Y CHICA DENTRO DEL CUADRO: no "
+            "se le ve la cara, ni los ojos, ni la boca, ni las manos, y nunca hace un "
+            "gesto de celebración ni salta. Es una silueta, no un retrato"
         )
 
     # Los imaginados (burbuja de pensamiento, recuerdo) NO cuentan como presentes,
@@ -155,11 +165,7 @@ def compose(
 
     # --- Regla 2: continuidad de escenario -----------------------------------
     bloques.append(f"Lugar: {scene.location}, ambientado en {theme.name.lower()}")
-    bloques.append(
-        "MISMO escenario, MISMA hora del día y MISMO clima que el resto de la "
-        "historia: día soleado y despejado. La emoción se muestra SOLO en la cara y "
-        "la postura del personaje, nunca en el clima ni en la luz del cielo"
-    )
+    bloques.append(style.continuity or _CONTINUIDAD_DEL_CUENTO)
     bloques.append(_ENCUADRE.get(scene.camera.shot.value, scene.camera.shot.value))
     bloques.append(
         f"paleta del tema: {theme.palette.primary}, {theme.palette.secondary}, "
@@ -182,12 +188,75 @@ def negative(style: Style) -> str:
     return ", ".join(partes)
 
 
+#: La continuidad de un cuento: el escenario y el clima no se mueven, y la emoción vive
+#: en la cara. Se escribió porque el cuento se nublaba solo en la mitad.
+_CONTINUIDAD_DEL_CUENTO = (
+    "MISMO escenario, MISMA hora del día y MISMO clima que el resto de la historia: "
+    "día soleado y despejado. La emoción se muestra SOLO en la cara y la postura del "
+    "personaje, nunca en el clima ni en la luz del cielo"
+)
+
+
+def _traductor(style: Style):
+    """Cómo se dibuja una emoción en ESTE estilo.
+
+    Es un parámetro del estilo y no un `if` acá adentro porque el compositor no tiene
+    por qué saber cuántos géneros existe — la misma razón por la que `StoryWriter.write`
+    recibe el prompt de sistema en vez de elegirlo.
+    """
+    return _atmosfera if style.emotion_in_light else _actitud
+
+
+def _atmosfera(emotion: Emotion) -> str:
+    """La emoción, traducida a LUZ y ENCUADRE — nunca a cara.
+
+    Es la regla de `_actitud` DADA VUELTA, y está bien que lo sea: son dos géneros
+    distintos. En un cuento la emoción en el clima es un error (el cuento se nublaba
+    solo); en un devocional la cara es el error, porque la figura es una silueta a
+    contraluz y no tiene rasgos que mover. Pedirle una expresión a algo sin rostro no
+    da una silueta expresiva: da una cara, que es lo que salió el 7-ago-2026.
+
+    Acá el paisaje ES el personaje. Lo único que puede cambiar entre una escena y la
+    siguiente es cuánta luz hay y qué tan chica se ve la figura.
+    """
+    return {
+        Emotion.CURIOSITY: (
+            "una franja de luz entrando desde un costado del cuadro, el resto en penumbra"
+        ),
+        Emotion.JOY: (
+            "el paisaje entero encendido por un contraluz dorado, aire limpio y "
+            "horizonte abierto, la figura quieta y de espaldas"
+        ),
+        Emotion.SADNESS: (
+            "luz baja y fría, casi sin color, la figura muy chica contra un espacio "
+            "vacío enorme"
+        ),
+        Emotion.FEAR: (
+            "contraluz duro y cielo ocupando casi todo el cuadro, la figura diminuta y "
+            "corrida del centro"
+        ),
+        Emotion.SURPRISE: (
+            "un haz de luz abriéndose entre las nubes sobre el suelo, todo lo demás en "
+            "sombra"
+        ),
+        Emotion.FRUSTRATION: "luz plana y gris, sin brillos, el horizonte cortado",
+        Emotion.CALM: (
+            "luz suave y pareja, horizonte amplio y despejado, la figura pequeña y "
+            "quieta dentro del cuadro"
+        ),
+        Emotion.PRIDE: "luz alta y clara sobre un terreno abierto, sin nada que estorbe",
+    }[emotion]
+
+
 def _actitud(emotion: Emotion) -> str:
     """La emoción, traducida a CARA y CUERPO — nunca a clima.
 
     Antes esto devolvía luz y atmósfera ("cielo algo gris" para la frustración) y el
     cuento se nublaba en el medio sin que la historia lo dijera. La emoción de un
     personaje no cambia el tiempo.
+
+    **Ojo:** para un estilo sin rostro esta función es exactamente el problema. Ver
+    `_atmosfera` y `Style.emotion_in_light`.
     """
     return {
         Emotion.CURIOSITY: (

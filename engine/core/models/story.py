@@ -21,6 +21,7 @@ from engine.core.enums import (
     EducationalValue,
     NarrativeBeat,
     OutputKind,
+    SpiritualNeed,
     StoryStatus,
 )
 from engine.core.exceptions import (
@@ -60,7 +61,17 @@ class Story(EngineModel):
             "dinosaurios puede salir en 3D estilo Pixar o en palitos 2D."
         )
     )
-    value: EducationalValue
+    value: EducationalValue | SpiritualNeed = Field(
+        description=(
+            "El ancla del contenido: el valor que enseña un cuento, o la necesidad que "
+            "atiende un devocional. Es una ETIQUETA — el pipeline no la lee, usa "
+            "`moral`—, y por eso el union no arrastra nada: lo verificado antes de "
+            "abrirlo es que ningún módulo hace `story.value` para decidir algo, y que "
+            "los valores de los dos enums no se pisan (si se pisaran, pydantic "
+            "resolvería al primero que valide y un devocional quedaría etiquetado como "
+            "cuento)."
+        )
+    )
     characters: list[StoryCharacter] = Field(min_length=1)
 
     moral: str = Field(

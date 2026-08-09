@@ -190,6 +190,65 @@ class TranscriptorQueCae:
         raise ProviderUnavailableError("503 del transcriptor.")
 
 
+#: Lo que contesta el revisor de guion cuando el texto está bien.
+#:
+#: Va acá y no en el test por la misma razón que `VISION_OK`: es el "todo en orden"
+#: canónico, y si mañana el verificador cambia una pregunta, este bloque tiene que
+#: cambiar con él en un solo lugar.
+REVISION_OK = (
+    "natural: nativo\n"
+    "cual_traducida: ninguna\n"
+    "registro: intimo\n"
+    "errores: ninguno\n"
+    "muletilla: ninguna\n"
+    "apertura: parar\n"
+    "cierre_pide: si"
+)
+
+
+class FakeRevisorDeGuion:
+    """Contesta lo que se le programó, en el formato que el verificador parsea.
+
+    Devuelve las respuestas en orden y repite la última cuando se acaban, igual que
+    `FakeVisionProvider`. Es lo que permite escribir el caso que importa —"la primera
+    vuelta sale con un error de idioma y la segunda limpia"— sin pagar una revisión
+    real y sin depender de que el modelo se equivoque hoy igual que ayer.
+    """
+
+    def __init__(self, respuestas: list[str] | None = None) -> None:
+        self.respuestas = list(respuestas) if respuestas else [REVISION_OK]
+        self.llamadas: list[dict] = []
+
+    async def generate_text(
+        self,
+        prompt: str,
+        *,
+        system: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float = 0.7,
+    ) -> str:
+        self.llamadas.append({"prompt": prompt, "system": system})
+        return self.respuestas[min(len(self.llamadas) - 1, len(self.respuestas) - 1)]
+
+
+class RevisorQueCae:
+    """El revisor de guion falla siempre. El devocional tiene que salir igual."""
+
+    def __init__(self) -> None:
+        self.llamadas = 0
+
+    async def generate_text(
+        self,
+        prompt: str,
+        *,
+        system: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float = 0.7,
+    ) -> str:
+        self.llamadas += 1
+        raise ProviderUnavailableError("503 del revisor de guion.")
+
+
 class VisionQueCae:
     """La visión falla siempre. El cuento tiene que salir igual."""
 

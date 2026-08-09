@@ -92,6 +92,19 @@ ADELANTO_DEL_CIERRE_S = 1.0
 #: Cuántos caracteres entran cómodos en una línea de un cuadro vertical.
 LARGO_DE_LINEA = 20
 
+#: Dónde va el texto del cierre. **Se fija dónde TERMINA el bloque, no dónde empieza.**
+#:
+#: Decía `h*0.80` —el borde de arriba— y el texto crece hacia abajo, así que cada línea
+#: de más lo empujaba fuera del cuadro. Con los cuentos nunca falló porque su pregunta
+#: final entra en dos líneas; la invitación del devocional ocupa cinco y el 7-ago-2026
+#: salió con la última palabra cortada por el borde inferior.
+#:
+#: Restarle `text_h` deja el final del bloque clavado al 88 % del alto para cualquier
+#: cantidad de líneas, y sin que nadie tenga que estimar cuánto mide una línea de
+#: DejaVu — que es justamente lo que se estimaba mal. Con dos líneas da y≈1534 contra
+#: los 1536 de antes: los cuentos ya publicados no se mueven.
+Y_DEL_CIERRE = "h*0.88-text_h"
+
 
 def _envolver(texto: str, largo: int = LARGO_DE_LINEA) -> list[str]:
     """Parte el texto en líneas sin cortar palabras."""
@@ -108,7 +121,9 @@ def _envolver(texto: str, largo: int = LARGO_DE_LINEA) -> list[str]:
     return lineas or [""]
 
 
-def _encadenar(tramos: list[str], duraciones: list[float]) -> str:
+def _encadenar(
+    tramos: list[str], duraciones: list[float], transicion: float = TRANSICION_S
+) -> str:
     """Los tramos de video, unidos con un fundido cruzado entre cada par.
 
     `xfade` cruza de a dos, así que hay que encadenarlo: el resultado de un cruce es
@@ -119,6 +134,11 @@ def _encadenar(tramos: list[str], duraciones: list[float]) -> str:
     una presentación de diapositivas. El motor viejo tenía el mismo cruce (0.4s) en
     el camino de Remotion y lo perdió en el camino de ffmpeg, donde los tramos se
     pegaban con `concat -c copy`.
+
+    `transicion` es parámetro y no la constante porque los dos formatos del motor
+    quieren cosas distintas: en un short de cinco segundos por escena, medio segundo de
+    cruce ya se siente lento; en un devocional donde la imagen dura cinco minutos, un
+    cruce corto se ve como un corte y rompe la quietud que es todo el producto.
     """
     if len(tramos) == 1:
         return f"{tramos[0]}null[vcrudo]"
@@ -128,10 +148,10 @@ def _encadenar(tramos: list[str], duraciones: list[float]) -> str:
     anterior = tramos[0]
     for i, tramo in enumerate(tramos[1:], start=1):
         etiqueta = "[vcrudo]" if i == len(tramos) - 1 else f"[x{i}]"
-        offset = max(0.0, acumulado - TRANSICION_S)
+        offset = max(0.0, acumulado - transicion)
         partes.append(
             f"{anterior}{tramo}xfade=transition=fade:"
-            f"duration={TRANSICION_S}:offset={offset:.3f}{etiqueta}"
+            f"duration={transicion}:offset={offset:.3f}{etiqueta}"
         )
         acumulado += duraciones[i] if i < len(duraciones) else 0.0
         anterior = etiqueta
@@ -208,7 +228,19 @@ class ShortRenderer:
         pregunta = self._texto(
             story.closing_question,
             salida.parent / "_cierre.txt",
-            y="h*0.80",
+            # **Anclado ABAJO, no arriba.** Decía `h*0.80`, que es dónde EMPIEZA el
+            # bloque: el texto crece hacia abajo, así que cuantas más líneas tiene, más
+            # se sale del cuadro. Con los cuentos nunca se notó porque su pregunta final
+            # entra en dos líneas de español. La invitación del devocional —"If your
+            # mind has been loud lately, type AMEN so I can pray for you by name"— ocupa
+            # cinco, y el 7-ago-2026 salió con la última palabra CORTADA por el borde de
+            # abajo. Justo esa línea: el nicho se eligió por su 1,718 % de comentarios,
+            # y el CTA que los pide era lo único ilegible del video.
+            #
+            # `text_h` lo resuelve para cualquier largo: se fija dónde TERMINA el bloque
+            # y ffmpeg calcula el resto. Con dos líneas cae en y≈1534 contra los 1536 de
+            # antes, así que los cuentos que ya salieron no se mueven.
+            y=Y_DEL_CIERRE,
             tope=64,
             desde=max(0.0, antes_de_la_pregunta - ADELANTO_DEL_CIERRE_S),
         )
