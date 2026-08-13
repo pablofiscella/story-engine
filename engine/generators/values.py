@@ -366,6 +366,153 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         # El que alienta desde afuera y festeja al final.
         companion_emotions=_companero_que_acompana(),
     ),
+    # ── Los dos valores que abren la serie más allá del catálogo original ──────
+    # Se agregaron el 12-ago-2026 porque los ocho primeros ya estaban publicados o agendados.
+    # Cada uno tiene su conflicto propio, que es la razón de que este archivo exista: sin eso,
+    # "pedir ayuda" y "no darse por vencido" saldrían el mismo cuento.
+
+    EducationalValue.ASKING_FOR_HELP: ValueProfile(
+        value=EducationalValue.ASKING_FOR_HELP,
+        # El conflicto NO es que no pueda: es que no quiere que lo vean necesitando.
+        # Por eso el fracaso no puede ser "se cansó", tiene que ser "se quedó solo con el
+        # problema mientras el otro estaba ahí al lado".
+        conflict="{protagonista} no puede solo con {objeto} pero le da vergüenza pedir ayuda",
+        moral="Pedir ayuda no es rendirse: es animarse a decir que solo no puedo.",
+        question="¿Y vos, a quién le pedís ayuda cuando algo te cuesta?",
+        needs_prop=True,
+        visual_notes={
+            NarrativeBeat.PROBLEM: (
+                "{protagonista} forcejea con {objeto} y mira de reojo a {companero}, "
+                "que está cerca; enseguida vuelve a intentarlo solo"
+            ),
+            NarrativeBeat.FAILURE: (
+                "{protagonista} sentado al lado de {objeto}, chiquito en el cuadro, "
+                "con {companero} lejos y de espaldas"
+            ),
+            # EL FINAL ES DE A DOS, y hay que decirlo: sin esto el ilustrador dibujó a
+            # {protagonista} jugando SOLO justo después de haber pedido ayuda, que es lo
+            # contrario de lo que el cuento acaba de enseñar.
+            NarrativeBeat.LESSON: (
+                "{protagonista} se acerca a {companero} y le habla mirándolo a los ojos; "
+                "los dos están cerca, en el mismo plano"
+            ),
+            NarrativeBeat.ENDING: (
+                "LOS DOS JUNTOS empujando {objeto} al mismo tiempo, uno de cada lado, "
+                "moviéndolo de verdad; ninguno está solo en el cuadro"
+            ),
+        },
+        escalations={
+            NarrativeBeat.ATTEMPT: (
+                "{protagonista} empuja {objeto} con todas sus fuerzas y no se mueve",
+                "{protagonista} prueba con un palito, y el palito se rompe",
+            ),
+            NarrativeBeat.FAILURE: (
+                "{protagonista} se queda sin ideas y {objeto} sigue igual",
+                "{protagonista} se sienta al lado de {objeto}, cansado y solo",
+            ),
+        },
+        purposes={
+            NarrativeBeat.HOOK: "{protagonista} descubre {objeto} y quiere moverlo él solo",
+            NarrativeBeat.PROBLEM: (
+                "{objeto} pesa demasiado; {companero} está cerca, pero {protagonista} "
+                "no quiere que lo vea sin poder"
+            ),
+            NarrativeBeat.ATTEMPT: (
+                "{protagonista} lo intenta de todas las formas mientras {companero} lo "
+                "mira desde lejos sin acercarse"
+            ),
+            NarrativeBeat.FAILURE: (
+                "{protagonista} se queda sin fuerzas y {objeto} no se movió ni un poquito"
+            ),
+            NarrativeBeat.LESSON: (
+                "{protagonista} respira hondo y le dice a {companero}: ¿me ayudás?"
+            ),
+            # EL {companero} VA NOMBRADO CON EL MARCADOR, y no como "entre los dos": el
+            # planificador arma el elenco de la escena preguntando si el purpose menciona
+            # `{companero}`. Escrito en prosa, el compañero no entra al cuadro — y el final de
+            # este cuento salió con el protagonista SOLO justo después de haber pedido ayuda,
+            # que es lo contrario de lo que enseña. Pablo lo vio enseguida.
+            NarrativeBeat.ENDING: (
+                "{protagonista} y {companero} empujan {objeto} JUNTOS, uno de cada lado, y "
+                "esta vez sí se mueve"
+            ),
+        },
+        emotions=_emociones_base(),
+        companion_emotions=_emociones_companero(),
+    ),
+
+    EducationalValue.APOLOGIZING: ValueProfile(
+        value=EducationalValue.APOLOGIZING,
+        # Acá el protagonista es el que rompe algo. El conflicto es la tentación de que no se
+        # note — por eso el intento es esconder, no arreglar.
+        #
+        # EL OBJETO SE ROMPE Y SIGUE ROTO. Cada beat posterior lo nombra como "los pedazos",
+        # nunca como el objeto entero: el ilustrador dibuja cada escena por separado y sin esto
+        # vuelve a poner la pelota sana en las seis escenas siguientes. Pablo lo cazó mirando:
+        # *"rompe la pelota pero en todas las escenas siguientes la pelota esta sana"*.
+        conflict="{protagonista} rompió {objeto} de {companero} sin querer y nadie lo vio",
+        moral="Decir perdón arregla lo que ningún pegamento puede.",
+        question="¿Y vos, cómo te sentís después de decir perdón?",
+        needs_prop=True,
+        visual_notes={
+            NarrativeBeat.PROBLEM: (
+                "{objeto} PARTIDO EN PEDAZOS en el suelo y {protagonista} con los ojos muy "
+                "abiertos, mirando para los costados"
+            ),
+            NarrativeBeat.ATTEMPT: (
+                "los PEDAZOS de {objeto} asomando detrás de una piedra; {objeto} NO está "
+                "entero en ninguna parte del cuadro"
+            ),
+            NarrativeBeat.FAILURE: (
+                "{companero} busca por el suelo con cara triste, y {protagonista} mira "
+                "desde atrás hacia la piedra donde escondió los PEDAZOS"
+            ),
+            NarrativeBeat.LESSON: (
+                "{protagonista} sostiene los PEDAZOS de {objeto} con las dos manos y se los "
+                "muestra a {companero}, cabizbajo"
+            ),
+            NarrativeBeat.ENDING: (
+                "los PEDAZOS de {objeto} quedan a un costado del suelo mientras los dos se "
+                "abrazan; NADIE juega con {objeto}, que sigue roto"
+            ),
+        },
+        escalations={
+            NarrativeBeat.ATTEMPT: (
+                "{protagonista} empuja los pedazos de {objeto} detrás de una piedra",
+                "{protagonista} tapa los pedazos con una hoja grande",
+            ),
+            NarrativeBeat.FAILURE: (
+                "{companero} busca {objeto} por todas partes y no lo encuentra",
+                "{protagonista} tiene un nudo en la panza que no se le va",
+            ),
+        },
+        purposes={
+            NarrativeBeat.HOOK: (
+                "{protagonista} juega con {objeto}, que está entero y es de {companero}"
+            ),
+            NarrativeBeat.PROBLEM: (
+                "{objeto} se rompe en pedazos sin querer, y no hay nadie mirando"
+            ),
+            NarrativeBeat.ATTEMPT: (
+                "{protagonista} esconde los pedazos detrás de una piedra para que "
+                "{companero} no se entere"
+            ),
+            NarrativeBeat.FAILURE: (
+                "{companero} busca su {objeto} y se pone triste; a {protagonista} le queda "
+                "un nudo en la panza"
+            ),
+            NarrativeBeat.LESSON: (
+                "{protagonista} junta los pedazos, se acerca a {companero} y le dice perdón"
+            ),
+            NarrativeBeat.ENDING: (
+                "{companero} lo abraza. {objeto} sigue roto y lo dejan a un costado: "
+                "se van a jugar juntos a otra cosa"
+            ),
+        },
+        emotions=_emociones_base(),
+        companion_emotions=_emociones_companero(),
+    ),
+
 }
 
 

@@ -75,6 +75,12 @@ class EducationalValue(StrEnum):
     PATIENCE = "paciencia"
     COURAGE = "valentia"
     PERSEVERANCE = "perseverancia"
+    # 12-ago-2026: los ocho primeros ya se publicaron o están agendados en Cuentitos de
+    # Colores. Estos dos abren la serie sin repetir tema, y siguen la misma regla que los
+    # demás: cada uno trae su propio conflicto en `values.py`, porque un valor sin conflicto
+    # pensado es una palabra suelta y no una historia.
+    ASKING_FOR_HELP = "pedir-ayuda"
+    APOLOGIZING = "pedir-perdon"
 
 
 class CharacterRole(StrEnum):
