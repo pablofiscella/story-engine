@@ -204,7 +204,20 @@ def test_la_moraleja_y_la_pregunta_salen_del_valor(
 ) -> None:
     story = StoryEngine().plan(**_kwargs(tema_dinos, estilo_3d, dino, tuca))
     assert "Compartir" in story.moral
-    assert story.closing_question.startswith("¿Y vos")
+    assert story.closing_question.startswith("¿")
+
+
+def test_ninguna_pregunta_empieza_con_y_vos() -> None:
+    """La voz lee mal "¿Y vos," y se publicó así.
+
+    15-ago-2026: salió "¿Mi voz?" en un cuento y "¿Para quién" en otro, medido con Whisper
+    sobre los wav. Aislada la frase se pronuncia bien, así que no hay nada que corregir en
+    el texto: hay que no usar ese arranque. El "vos" va después del verbo.
+    """
+    from engine.generators.values import PROFILES
+
+    malas = [p.question for p in PROFILES.values() if p.question.lstrip("¿").startswith("Y vos")]
+    assert not malas, f"estas preguntas vuelven al patrón que la voz lee mal: {malas}"
 
 
 def test_el_primer_personaje_es_el_protagonista(

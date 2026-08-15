@@ -101,7 +101,12 @@ class StoryNarrator:
 
         async def una(escena: Scene) -> None:
             async with limite:
-                escena.audio = await self._narrar_escena(escena, destino, personajes)
+                # Lo que se dijo en la escena anterior. Va como contexto al proveedor de
+                # voz: sin eso cada tramo arranca en frío y deforma su primera palabra.
+                # Se toma del GUIÓN y no del audio ya generado, así las escenas pueden
+                # seguir narrándose en paralelo.
+                previa = story.scenes[escena.index - 1].narration if escena.index else ""
+                escena.audio = await self._narrar_escena(escena, destino, personajes, previa)
 
         await asyncio.gather(*(una(e) for e in story.scenes))
         story.closing_audio = await self._narrar_cierre(story, destino)
@@ -123,6 +128,9 @@ class StoryNarrator:
         el video terminaba en la última palabra de la historia, en seco.
         """
         pistas: list[AudioTrack] = []
+        # El cierre también encadena: la moraleja viene después de la última escena y la
+        # pregunta después de la moraleja.
+        anterior = story.scenes[-1].narration if story.scenes else ""
         for n, texto in enumerate(t for t in (story.moral, story.closing_question) if t):
             pistas.append(
                 await self._pista(
@@ -134,12 +142,15 @@ class StoryNarrator:
                     # El cierre se dice más lento y más cálido que el cuento: es el
                     # momento en que el narrador le habla al chico, no a la historia.
                     entonacion=f"{prompts_voz.DIRECCION} {prompts_voz.APERTURA}",
+                    anterior=anterior,
                 )
             )
+            anterior = texto
         return pistas
 
     # ------------------------------------------------------------------------
-    async def _narrar_escena(self, escena: Scene, destino: Path, personajes) -> list[AudioTrack]:
+    async def _narrar_escena(self, escena: Scene, destino: Path, personajes,
+                             anterior: str = "") -> list[AudioTrack]:
         """Las pistas de una escena, en el orden en que suenan.
 
         Primero la narración y después el diálogo: el narrador presenta la situación
@@ -157,6 +168,7 @@ class StoryNarrator:
                 entonacion=prompts_voz.direccion_de_escena(
                     escena.beat, escena.emotion, es_primera=escena.index == 0
                 ),
+                anterior=anterior,
             )
         )
 
@@ -193,6 +205,7 @@ class StoryNarrator:
         character_id: str | None,
         ruta: Path,
         entonacion: str = "",
+        anterior: str = "",
     ) -> AudioTrack:
         decible = para_decir(texto)
         # La etiqueta va DESPUÉS de limpiar y no cuenta como texto: es una instrucción
@@ -213,6 +226,7 @@ class StoryNarrator:
                     voice_id=voz.provider_voice_id,
                     speed=voz.speed,
                     audio_format="wav",
+                    previous_text=anterior,
                 ),
                 al_reintentar=lambda n, e: logger.warning(
                     "%s: el proveedor de voz falló (%s). Reintento %s.", ruta.name, e, n

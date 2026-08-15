@@ -81,6 +81,17 @@ CONTORNO = 8
 #: Con un cruce corto el cuento fluye. Corto a propósito: más de medio segundo en un
 #: short se siente lento, porque la escena entera dura cinco.
 TRANSICION_S = 0.4
+#: Fundido de entrada y salida de CADA tramo de audio, en segundos.
+#:
+#: Los tramos se concatenan de golpe, y un audio que no termina exactamente en cero produce un
+#: salto de señal que se oye como un CLIC en cada corte. Pablo, 13-ago-2026: *"en los dos
+#: videos senti que en el audio se corta como si cada escena fuera un audio distinto que se
+#: corta con un pequeño ruido entre imagen e imagen"*. Era literal: cada escena ES un audio
+#: distinto, y se notaba la costura.
+#:
+#: Veinte milisegundos no se perciben como fundido pero llevan la señal a cero en los bordes,
+#: que es lo único que hace falta para que el corte deje de sonar.
+FUNDIDO_TRAMO_S = 0.02
 
 #: Cuánto antes de que la voz lo diga aparece el texto del cierre.
 #:
@@ -163,8 +174,16 @@ class ShortRenderer:
             "-loop", "1", "-t", f"{TITULO_S + TRANSICION_S:.3f}",
             "-i", story.scenes[0].image_path,
         ]
+        # SIN RESPALDO A PROPÓSITO. Antes decía `or "Un cuento"` y por eso dos cuentos
+        # se publicaron con ese cartel: el título nunca se generaba y nadie se enteró
+        # hasta verlo en YouTube. Un video sin título no se arma; falla acá.
+        if not (story.metadata.title or "").strip():
+            raise ValueError(
+                "La historia no tiene título y el cartel de apertura lo necesita. "
+                "Lo escribe StoryWriter._titular()."
+            )
         placa = self._texto(
-            story.metadata.title or "Un cuento",
+            story.metadata.title,
             salida.parent / "_titulo.txt",
             y="h*0.10",
             tope=88,
@@ -219,7 +238,14 @@ class ShortRenderer:
         for j, pausa in enumerate(pausas):
             # `adelay` mete el silencio ANTES y `apad` DESPUÉS. Se usa apad porque la
             # pausa es el aire que queda al terminar de hablar, no antes de empezar.
-            filtros.append(f"[{base + j}:a]apad=pad_dur={pausa:.3f}[a{j}]")
+            # El fundido de salida va con el truco de dar vuelta el audio, aplicarle un
+            # fundido de ENTRADA y volverlo a dar vuelta: así no hace falta saber cuánto dura
+            # el tramo para saber dónde empieza el final.
+            filtros.append(
+                f"[{base + j}:a]afade=t=in:st=0:d={FUNDIDO_TRAMO_S},"
+                f"areverse,afade=t=in:st=0:d={FUNDIDO_TRAMO_S},areverse,"
+                f"apad=pad_dur={pausa:.3f}[a{j}]"
+            )
 
         cadena_v = _encadenar(tramos, [TITULO_S, *duraciones])
         # El fundido al negro arranca cuando arranca la cola: se apaga mientras suena
@@ -233,10 +259,16 @@ class ShortRenderer:
         cadena_a = (
             "".join(f"[a{j}]" for j in range(len(pistas)))
             + f"concat=n={len(pistas)}:v=0:a=1[unido];"
-            # El título no lleva voz: se le antepone el silencio para que la primera
-            # narración caiga justo cuando termina la placa.
-            f"[unido]adelay={int(TITULO_S * 1000)}|{int(TITULO_S * 1000)}[conplaca];"
-            f"[conplaca]{LOUDNESS}[audio]"
+            # LA VOZ ARRANCA DE UNA, sobre la placa. Antes se le anteponía un silencio del
+            # largo del título para que la narración cayera al terminar la placa — y eso dejaba
+            # el video empezando MUDO. Pablo, 13-ago-2026: *"comienza unos segundos sin decir
+            # nada"*. En el feed de Shorts esos son los segundos que deciden si alguien se
+            # queda: el propio Studio marca la retención de los primeros segundos como lo que
+            # hay que mejorar.
+            #
+            # No hay nada que sincronizar: la placa se dibuja SOBRE la primera imagen del
+            # cuento, así que la primera narración le corresponde igual.
+            f"[unido]{LOUDNESS}[audio]"
         )
         filtro = ";".join([*filtros, cadena_v, cadena_a])
 

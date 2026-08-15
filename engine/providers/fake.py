@@ -142,8 +142,10 @@ class FakeVoiceProvider:
         voice_id: str | None = None,
         speed: float = 1.0,
         audio_format: str = "wav",
+        previous_text: str = "",
     ) -> bytes:
-        self.llamadas.append({"text": text, "voice_id": voice_id, "speed": speed})
+        self.llamadas.append({"text": text, "voice_id": voice_id, "speed": speed,
+                              "previous_text": previous_text})
         # Las etiquetas de entonación no se DICEN: son instrucciones de actuación.
         # Contarlas como palabras haría que el fake mintiera sobre la duración, que es
         # justo lo que este provider existe para simular bien.

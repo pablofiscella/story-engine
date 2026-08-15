@@ -110,10 +110,14 @@ class CachedVoiceProvider(_Base):
         voice_id: str | None = None,
         speed: float = 1.0,
         audio_format: str = "wav",
+        previous_text: str = "",
     ) -> bytes:
         # `voice_id` en la clave. Es EL bug del caché viejo: sin esto, cambiar la voz
         # por defecto devolvía los audios de la voz anterior como si fueran nuevos.
-        ruta = self._ruta("voz", text, voice_id, speed, audio_format)
+        # `previous_text` va por el mismo motivo: cambia el audio que devuelve el
+        # proveedor, así que dos tomas del mismo texto con distinto contexto no son
+        # la misma toma.
+        ruta = self._ruta("voz", text, voice_id, speed, audio_format, previous_text)
 
         if ruta.exists():
             self.hits += 1
@@ -121,7 +125,8 @@ class CachedVoiceProvider(_Base):
 
         self.misses += 1
         audio = await self._inner.synthesize(
-            text, voice_id=voice_id, speed=speed, audio_format=audio_format
+            text, voice_id=voice_id, speed=speed, audio_format=audio_format,
+            previous_text=previous_text,
         )
         ruta.write_bytes(audio)
         return audio

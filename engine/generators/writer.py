@@ -74,12 +74,50 @@ class StoryWriter:
             anterior = escena.narration
 
         story.scenes = escenas
+        story.metadata.title = self._titular(story, escenas)
         if story.status is StoryStatus.PLANNED:
             story.advance_to(StoryStatus.WRITTEN)
         story.metadata.touch()
         return story
 
     # ------------------------------------------------------------------------
+    @staticmethod
+    def _titular(story, escenas) -> str:
+        """El título que va en el cartel de apertura.
+
+        POR QUÉ EXISTE: nadie lo escribía. `metadata.title` quedaba en "" y el render
+        caía en su respaldo —"Un cuento"— así que los videos abrían con un cartel
+        genérico. Pablo lo vio publicado: "los dos videos cuando comienzan dicen cuento
+        y no el titulo".
+
+        Se arma con lo que ya está decidido —el protagonista y el objeto del conflicto—
+        en vez de pedírselo al modelo: un cuento de 40 segundos no necesita ingenio en
+        el título, y un pedido más es un gasto más por cuento.
+        """
+        # `story.characters` son StoryCharacter (personaje + papel), no Character:
+        # el nombre está un nivel más adentro. Se busca al protagonista, no al primero.
+        from engine.core.enums import CharacterRole
+        heroe = ""
+        for sc in story.characters:
+            if sc.role is CharacterRole.PROTAGONIST:
+                heroe = (sc.character.name or "").strip()
+                break
+        if not heroe and story.characters:
+            heroe = (story.characters[0].character.name or "").strip()
+        objeto = ""
+        if story.plan is not None:
+            objeto = (getattr(story.plan, "object_name", "") or "").strip()
+        if not objeto:
+            # El objeto vive en el plan; si el plan no lo expone, sale de la primera escena.
+            import re as _re
+            primera = escenas[0].narration if escenas else ""
+            m = _re.search(r"\b(?:un|una|el|la|los|las)\s+(\w+(?:\s+\w+)?)", primera)
+            objeto = m.group(1).strip() if m else ""
+        objeto = objeto.rstrip(".,!?")
+        if heroe and objeto:
+            return f"{heroe} y {objeto}"
+        return heroe or objeto or ""
+
     async def _escribir_escena(
         self,
         plan,

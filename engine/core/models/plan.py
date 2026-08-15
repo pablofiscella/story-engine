@@ -125,6 +125,10 @@ class StoryPlan(EngineModel):
 
     target_duration_s: float = Field(gt=0)
     scenes: list[ScenePlan] = Field(min_length=MIN_SCENES, max_length=MAX_SCENES)
+    #: El objeto alrededor del cual gira el conflicto ("una roca grande", "la pelota").
+    #: Lo elige el planificador y lo usa el título: sin esto, el cartel de apertura no
+    #: tiene de dónde sacar de qué trata el cuento.
+    object_name: str = ""
 
     @model_validator(mode="after")
     def _validar(self) -> StoryPlan:

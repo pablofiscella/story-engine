@@ -77,11 +77,32 @@ class StoryPlanner:
 
         vistos: dict[NarrativeBeat, int] = {}
         escenas = []
+        # LO QUE LE PASÓ AL OBJETO SIGUE PASANDO. El ilustrador dibuja cada escena por separado
+        # y sin memoria: rompía la pelota en el problema y la volvía a dibujar entera dos
+        # escenas después, o la dejaba a la vista mientras el otro la buscaba. Acá se arrastra
+        # el estado declarado en `prop_state` a TODAS las escenas siguientes.
+        estado_del_objeto: list[str] = []
         for i, (beat, dur, lugar) in enumerate(zip(beats, duraciones, lugares, strict=True)):
             repeticion = vistos.get(beat, 0)
             vistos[beat] = repeticion + 1
             elenco = self._elenco_de(perfil, beat, protagonist, companion)
-            nota = self._nota_visual(perfil, beat, protagonist, companion, objeto)
+            nota = self._nota_visual(perfil, beat, protagonist, companion, objeto,
+                                     repeticion=repeticion)
+            # El estado de ESTE beat entra ya en esta escena: la pelota se rompe acá y acá se
+            # ve rota. Los de beats anteriores siguen valiendo.
+            nuevo = perfil.prop_state.get(beat)
+            if nuevo:
+                texto = nuevo.format(protagonista=protagonist.name, objeto=objeto or "the toy",
+                                     companero=companion.name if companion else "the friend")
+                # El PRIMERO es el daño y no se deshace —lo roto sigue roto—; los que vienen
+                # después son dónde está el objeto, y ésos se reemplazan: escondido detrás de
+                # una piedra y después en la mano del protagonista no pueden valer a la vez.
+                if not estado_del_objeto:
+                    estado_del_objeto.append(texto)
+                elif texto not in estado_del_objeto:
+                    estado_del_objeto[1:] = [texto]
+            if estado_del_objeto:
+                nota = (nota + ". " if nota else "") + "CONTINUITY: " + "; ".join(estado_del_objeto)
             proposito = self._redactar_proposito(
                 perfil,
                 beat,
@@ -120,7 +141,7 @@ class StoryPlanner:
                     imagined_character_ids=imaginados,
                 )
             )
-        return StoryPlan(target_duration_s=duration_s, scenes=escenas)
+        return StoryPlan(target_duration_s=duration_s, scenes=escenas, object_name=objeto)
 
     # ------------------------------------------------------------------ estructura
     def _cantidad_de_escenas(self, duration_s: float, age_range: AgeRange) -> int:
@@ -198,6 +219,10 @@ class StoryPlanner:
         """
         if not perfil.needs_prop:
             return ""
+        # El valor manda sobre el tema: el objeto tiene que servir al CONFLICTO. El del tema es
+        # el primero de su lista y no sabe nada de lo que la historia necesita.
+        if perfil.prop_override:
+            return perfil.prop_override
         return theme.props[0] if theme.props else "un juguete nuevo"
 
     def _nota_visual(
@@ -207,14 +232,24 @@ class StoryPlanner:
         protagonist: Character,
         companion: Character | None,
         objeto: str,
+        repeticion: int = 0,
     ) -> str:
         """Dirección de arte de la escena, si el beat la pide.
 
         Es del MOTOR y no del escritor: una burbuja de pensamiento es una decisión
         de puesta en escena, no de redacción. Y si la decidiera la IA, el prompt de
         imagen —que se compone del plan— no se enteraría.
+
+        CUANDO EL BEAT SE REPITE, LA NOTA TAMBIÉN AVANZA. El propósito ya variaba por
+        repetición (`escalations`) pero la nota visual no, así que las dos escenas del
+        mismo beat pedían la MISMA imagen. Pablo, 15-ago-2026: "hay dos imágenes que son
+        iguales o muy parecidas, los textos deberían ser diferentes si no las imágenes
+        van a ser parecidas". Una nota puede ser un texto (vale para todas) o una tupla
+        (una por repetición; la última se reusa si el beat se repite más veces).
         """
         plantilla = perfil.visual_notes.get(beat)
+        if isinstance(plantilla, tuple | list):
+            plantilla = plantilla[min(repeticion, len(plantilla) - 1)] if plantilla else ""
         if not plantilla:
             return ""
         if companion is None:

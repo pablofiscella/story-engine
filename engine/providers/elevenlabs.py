@@ -96,7 +96,15 @@ class ElevenLabsProvider:
         self,
         api_key: str,
         *,
-        model: str = "eleven_v3",
+        # POR QUÉ v2 Y NO v3 (15-ago-2026). v3 DEFORMA LA PRIMERA PALABRA DE CADA TRAMO,
+        # y el motor narra escena por escena: "Pedir"→"seguir", "Dino"→"Pino",
+        # "Rexo"→"Prexo". Medido con Whisper sobre el arranque suelto de cada wav, y oído
+        # por Pablo en dos videos. v3 tampoco acepta `previous_text` —devuelve 400—, así
+        # que no hay forma de darle contexto: es el modelo el que no sirve para esto.
+        # Con v2 + `previous_text` el mismo tramo se oye "Rexo abrazó a Dino" limpio, y
+        # sigue siendo la misma voz (245 Hz contra 231 del publicado; entre dos tomas de
+        # v3 ya hay 7 Hz de diferencia).
+        model: str = "eleven_multilingual_v2",
         default_voice_id: str = VOZ_POR_DEFECTO,
         stability: float = ESTABILIDAD_CUENTO,
         similarity: float = 0.8,
@@ -130,6 +138,7 @@ class ElevenLabsProvider:
         voice_id: str | None = None,
         speed: float = 1.0,
         audio_format: str = "wav",
+        previous_text: str = "",
     ) -> bytes:
         """Los bytes del audio. WAV por defecto para poder medir la duración."""
         if audio_format not in _FORMATOS:
@@ -147,6 +156,12 @@ class ElevenLabsProvider:
                 "similarity_boost": self._similarity,
             },
         }
+        # QUÉ SE DIJO ANTES. Sin esto cada tramo se sintetiza EN FRÍO y la voz deforma la
+        # primera palabra: se midió "Pedir"→"seguir", "Dino"→"Pino", "Rexo"→"La perdó" y
+        # "¿Y vos"→"¿Mi voz?" en cuentos distintos. La API lo acepta justamente para que el
+        # ataque y la entonación de un tramo sepan de dónde vienen.
+        if previous_text:
+            cuerpo["previous_text"] = previous_text
         if self._style and self._model in _ACEPTAN_STYLE:
             cuerpo["voice_settings"] = {
                 **cuerpo["voice_settings"],  # type: ignore[dict-item]

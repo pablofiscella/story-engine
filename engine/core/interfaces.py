@@ -75,8 +75,14 @@ class VoiceProvider(Protocol):
         voice_id: str | None = None,
         speed: float = 1.0,
         audio_format: str = "wav",
+        previous_text: str = "",
     ) -> bytes:
         """Devuelve los bytes del audio.
+
+        `previous_text` es lo que se dijo justo antes. No se lee: le da contexto al
+        proveedor para que el tramo no arranque en frío. Sin él, la voz deforma la
+        PRIMERA palabra de cada tramo — medido en cuentos distintos: "Pedir"→"seguir",
+        "Dino"→"Pino", "Rexo"→"La perdó".
 
         El formato por defecto es WAV y no mp3 a propósito: el motor necesita MEDIR
         cuánto dura cada pista para que la imagen no cambie antes de que termine la

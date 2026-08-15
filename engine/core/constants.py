@@ -138,4 +138,7 @@ COLA_FINAL_S = 1.2
 
 #: Cuánto dura la placa de título del principio.
 #: Corta a propósito: en un short los primeros segundos deciden si se quedan.
-TITULO_S = 2.0
+# La placa del título, sobre la primera imagen. Bajó de 2 s a 0,8 s el 13-ago-2026: con la voz
+# arrancando de una (ver render/video.py), dos segundos de placa dejaban el título colgado
+# encima de una narración que ya iba por la mitad de la frase.
+TITULO_S = 0.8

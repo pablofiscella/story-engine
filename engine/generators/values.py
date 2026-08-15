@@ -34,6 +34,11 @@ class ValueProfile:
     #: La frase que resume la enseñanza. Va al cierre y a la descripción del post.
     moral: str
     #: Pregunta final al espectador. Lo que convierte a quien mira en quien comenta.
+    #:
+    #: NO EMPEZARLA CON "¿Y vos,". Las diez arrancaban así y la voz la leía mal de forma
+    #: recurrente: salió "la voz" en un cuento y "¿Para quién" en otro. Aislada se pronuncia
+    #: bien —se probó—, así que no es el texto sino esa arranque en el contexto del cierre.
+    #: El "vos" va DESPUÉS del verbo: "¿Qué compartís vos…?".
     question: str
     #: Instrucción para el escritor en cada beat.
     purposes: dict[NarrativeBeat, str]
@@ -62,6 +67,29 @@ class ValueProfile:
     #: escenas del mismo beat salen casi idénticas — pasó de verdad ("el secreto la
     #: aplastaba" / "el secreto la envolvía" en dos escenas seguidas).
     escalations: dict[NarrativeBeat, tuple[str, ...]] = field(default_factory=dict)
+    #: EL OBJETO que pide este valor, cuando el del tema no sirve.
+    #:
+    #: El objeto sale de `theme.props[0]` — el primero del tema, sin mirar el conflicto. Para
+    #: "compartir" una pelota es perfecta; para "pedir ayuda", cuyo conflicto es NO PODER SOLO,
+    #: es absurda: un dinosaurio mueve una pelota sin ayuda de nadie. El guión lo notó y lo
+    #: parcheó inventando que la empujaba con un palito hasta romperla, y después la movían
+    #: entre los dos aunque estuviera rota. Pablo: *"el relato está mal y hace que la imagen
+    #: muestre algo errado"*.
+    #:
+    #: Cuando el conflicto necesita un objeto con cierta propiedad —pesado, frágil, único— se
+    #: declara acá y gana sobre el del tema.
+    prop_override: str = ""
+
+    #: CÓMO QUEDA EL OBJETO a partir de cierto beat, y para siempre.
+    #:
+    #: El ilustrador dibuja cada escena por separado y sin memoria: rompía la pelota en el
+    #: problema y la volvía a dibujar entera dos escenas después. Pablo, 13-ago-2026: *"habia
+    #: un tema de la pelota que se rompia y despues estaba sana o la buscaba y estaba rota al
+    #: lado… un tema de recordar lo que pasaba en tomas anteriores"*.
+    #:
+    #: Lo que se declara acá viaja a TODAS las escenas siguientes. Va en inglés porque termina
+    #: en el prompt de imagen.
+    prop_state: dict[NarrativeBeat, str] = field(default_factory=dict)
 
 
 def _emociones_base() -> dict[NarrativeBeat, Emotion]:
@@ -115,7 +143,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         value=EducationalValue.SHARING,
         conflict="{protagonista} tiene algo que quiere solo para sí",
         moral="Compartir nos hace más felices y fortalece la amistad.",
-        question="¿Y vos, qué compartís con tus amigos?",
+        question="¿Qué compartís vos con tus amigos?",
         needs_prop=True,
         visual_notes={
             NarrativeBeat.PROBLEM: (
@@ -166,7 +194,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         value=EducationalValue.FRIENDSHIP,
         conflict="{protagonista} está solo y no sabe cómo acercarse a los demás",
         moral="Un amigo se gana acercándose, no esperando.",
-        question="¿Y vos, cómo hiciste tu mejor amigo?",
+        question="¿Cómo conociste vos a tu mejor amigo?",
         purposes={
             NarrativeBeat.HOOK: "Mostrar a {protagonista} mirando de lejos cómo juegan los demás",
             NarrativeBeat.PROBLEM: "{protagonista} quiere sumarse pero le da vergüenza",
@@ -192,7 +220,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         value=EducationalValue.RESPECT,
         conflict="{protagonista} quiere imponer su forma de hacer las cosas",
         moral="Cada uno tiene su manera, y todas merecen respeto.",
-        question="¿Y vos, en qué sos diferente a tus amigos?",
+        question="¿En qué sos diferente a tus amigos?",
         purposes={
             NarrativeBeat.HOOK: "Presentar a {protagonista} muy seguro de cómo se hacen las cosas",
             NarrativeBeat.PROBLEM: "{companero} lo hace distinto y {protagonista} se burla",
@@ -217,7 +245,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         value=EducationalValue.HONESTY,
         conflict="{protagonista} rompe o pierde algo y no quiere admitirlo",
         moral="Decir la verdad cuesta un ratito; la mentira pesa mucho más.",
-        question="¿Y vos, alguna vez dijiste la verdad aunque diera miedo?",
+        question="¿Alguna vez dijiste la verdad aunque diera miedo?",
         needs_prop=True,
         visual_notes={
             NarrativeBeat.FAILURE: (
@@ -256,7 +284,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         value=EducationalValue.EMPATHY,
         conflict="{protagonista} no se da cuenta de que {companero} está mal",
         moral="Preguntar '¿estás bien?' puede cambiarle el día a alguien.",
-        question="¿Y vos, cómo te das cuenta cuando un amigo está triste?",
+        question="¿Cómo te das cuenta cuando un amigo está triste?",
         purposes={
             NarrativeBeat.HOOK: "Presentar a {protagonista} entusiasmado con su propio juego",
             NarrativeBeat.PROBLEM: (
@@ -280,7 +308,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         value=EducationalValue.PATIENCE,
         conflict="{protagonista} quiere algo YA y no tolera esperar",
         moral="Las cosas más lindas necesitan su tiempo.",
-        question="¿Y vos, qué estás esperando con muchas ganas?",
+        question="¿Qué estás esperando vos con muchas ganas?",
         purposes={
             NarrativeBeat.HOOK: "Presentar a {protagonista} esperando algo que le entusiasma mucho",
             NarrativeBeat.PROBLEM: "Falta demasiado y {protagonista} se desespera",
@@ -299,7 +327,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         value=EducationalValue.COURAGE,
         conflict="{protagonista} tiene miedo de algo que quiere hacer",
         moral="Ser valiente no es no tener miedo: es animarse igual.",
-        question="¿Y vos, a qué te animaste aunque tuvieras miedo?",
+        question="¿A qué te animaste vos aunque tuvieras miedo?",
         escalations={
             NarrativeBeat.ATTEMPT: (
                 "{protagonista} se acerca unos pasos y se detiene",
@@ -333,7 +361,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         value=EducationalValue.PERSEVERANCE,
         conflict="a {protagonista} no le sale algo y quiere abandonar",
         moral="No salió todavía no es lo mismo que no puedo.",
-        question="¿Y vos, qué aprendiste después de intentarlo muchas veces?",
+        question="¿Qué aprendiste después de intentarlo muchas veces?",
         escalations={
             NarrativeBeat.ATTEMPT: (
                 "{protagonista} lo intenta otra vez, poniendo más fuerza",
@@ -377,17 +405,41 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         # Por eso el fracaso no puede ser "se cansó", tiene que ser "se quedó solo con el
         # problema mientras el otro estaba ahí al lado".
         conflict="{protagonista} no puede solo con {objeto} pero le da vergüenza pedir ayuda",
-        moral="Pedir ayuda no es rendirse: es animarse a decir que solo no puedo.",
-        question="¿Y vos, a quién le pedís ayuda cuando algo te cuesta?",
+        # Pesado a propósito: si se puede mover solo, no hay a quién pedirle ayuda.
+        prop_override="una roca grande",
+        # NO EMPIEZA CON "Pedir". La voz deforma la primera palabra del tramo: se oyó
+        # "medir ayuda" primero y "seguir ayuda" después, con dos generaciones distintas.
+        # La palabra que sostiene el sentido no puede ir en el arranque; adelante va algo
+        # sacrificable.
+        moral=("Cuando algo te cuesta, pedir ayuda no es rendirse: "
+               "es animarse a decir que solo no puedo."),
+        question="¿A quién le pedís ayuda vos cuando algo te cuesta?",
         needs_prop=True,
         visual_notes={
             NarrativeBeat.PROBLEM: (
                 "{protagonista} forcejea con {objeto} y mira de reojo a {companero}, "
                 "que está cerca; enseguida vuelve a intentarlo solo"
             ),
+            # EL BEAT DEL INTENTO NO TENÍA NOTA, y por eso salió mal: el escritor inventó
+            # un palito y escribió "empuja la roca y... ¡se rompe!" —sin sujeto—, así que
+            # el ilustrador partió LA ROCA. Lo que se rompe es la herramienta, nunca el
+            # obstáculo: si el obstáculo cede, el cuento ya no necesita a nadie más.
+            # UNA NOTA POR REPETICIÓN. El beat aparece dos veces y con una sola nota las
+            # dos escenas pedían la misma imagen: "Dino empuja la roca" y "Dino empuja la
+            # roca con todas sus fuerzas", con el mismo dibujo.
+            NarrativeBeat.ATTEMPT: (
+                "{protagonista} de ESPALDAS contra {objeto}, empujando con las patas "
+                "traseras clavadas en la tierra, que se levanta bajo sus pies; {objeto} no "
+                "se mueve ni un poco",
+                "{protagonista} hace palanca con un palito fino contra {objeto}; EL PALITO "
+                "se parte en dos pedazos y {objeto} sigue ENTERA, sin moverse y sin una sola "
+                "grieta",
+            ),
             NarrativeBeat.FAILURE: (
-                "{protagonista} sentado al lado de {objeto}, chiquito en el cuadro, "
-                "con {companero} lejos y de espaldas"
+                "{protagonista} DE PIE con los brazos caídos y la cabeza gacha frente a "
+                "{objeto}, sin tocarla; {companero} pasa a lo lejos, de espaldas",
+                "{protagonista} SENTADO en el suelo dándole la espalda a {objeto}, chiquito "
+                "en el cuadro, con la cara apoyada en las manos; {companero} lejos",
             ),
             # EL FINAL ES DE A DOS, y hay que decirlo: sin esto el ilustrador dibujó a
             # {protagonista} jugando SOLO justo después de haber pedido ayuda, que es lo
@@ -451,8 +503,21 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         # vuelve a poner la pelota sana en las seis escenas siguientes. Pablo lo cazó mirando:
         # *"rompe la pelota pero en todas las escenas siguientes la pelota esta sana"*.
         conflict="{protagonista} rompió {objeto} de {companero} sin querer y nadie lo vio",
+        prop_state={
+            NarrativeBeat.PROBLEM: "{objeto} is SHATTERED into several separate loose fragments "
+                                   "lying apart from each other; there is NO whole round "
+                                   "{objeto} anywhere in the picture, and it stays like that "
+                                   "for the rest of the story",
+            NarrativeBeat.ATTEMPT: "the loose broken fragments of {objeto} are being pushed "
+                                   "behind a rock; they are separate pieces, NOT a whole ball, "
+                                   "and most of them are already out of sight",
+            NarrativeBeat.LESSON: "{protagonista} is now HOLDING the broken pieces of {objeto} "
+                                  "in his hands: they are no longer hidden",
+            NarrativeBeat.ENDING: "the broken pieces of {objeto} lie together on the ground to "
+                                  "one side: nobody is playing with it",
+        },
         moral="Decir perdón arregla lo que ningún pegamento puede.",
-        question="¿Y vos, cómo te sentís después de decir perdón?",
+        question="¿Cómo te sentís vos después de decir perdón?",
         needs_prop=True,
         visual_notes={
             NarrativeBeat.PROBLEM: (
@@ -493,9 +558,13 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
             NarrativeBeat.PROBLEM: (
                 "{objeto} se rompe en pedazos sin querer, y no hay nadie mirando"
             ),
+            # SIN nombrar a {companero}: el motor arma el elenco buscando ese marcador, y
+            # nombrarlo —aunque sea para decir que no se entere— lo mete en el cuadro. Salió
+            # {protagonista} escondiendo la pelota CON el otro mirando, que destruye el
+            # conflicto entero.
             NarrativeBeat.ATTEMPT: (
-                "{protagonista} esconde los pedazos detrás de una piedra para que "
-                "{companero} no se entere"
+                "{protagonista} esconde los pedazos detrás de una piedra, solo, mirando "
+                "para todos lados por si alguien viene"
             ),
             NarrativeBeat.FAILURE: (
                 "{companero} busca su {objeto} y se pone triste; a {protagonista} le queda "

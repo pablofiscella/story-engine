@@ -355,6 +355,27 @@ def test_la_direccion_de_actuacion_va_en_toda_escena() -> None:
 # --- el cierre --------------------------------------------------------------------
 
 
+async def test_cada_tramo_sabe_lo_que_se_dijo_antes(
+    tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
+) -> None:
+    """El TTS recibe la frase anterior como contexto.
+
+    Sin esto cada tramo se sintetiza en frío y la voz deforma su PRIMERA palabra:
+    15-ago-2026 se midió "Pedir"→"seguir", "Dino"→"Pino" y "Rexo"→"La perdó" en cuentos
+    ya renderizados, y una de esas se publicó. No se lee en voz alta: sólo da contexto.
+    """
+    voz = FakeVoiceProvider()
+    story = await _escrita(tema_dinos, estilo_3d, dino, tuca)
+    await StoryNarrator(voz).narrate(story, tmp_path)
+
+    for i, escena in enumerate(story.scenes):
+        llamada = next(c for c in voz.llamadas if escena.narration in c["text"])
+        esperado = story.scenes[i - 1].narration if i else ""
+        assert llamada["previous_text"] == esperado, (
+            f"la escena {i} no recibió como contexto lo que se dijo en la anterior"
+        )
+
+
 async def test_la_moraleja_y_la_pregunta_se_narran(
     tmp_path, tema_dinos: Theme, estilo_3d: Style, dino: Character, tuca: Character
 ) -> None:
