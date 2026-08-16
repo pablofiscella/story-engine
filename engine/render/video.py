@@ -44,7 +44,12 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from engine.core.constants import COLA_FINAL_S, PAUSA_ENTRE_ESCENAS_S, TITULO_S
+from engine.core.constants import (
+    COLA_FINAL_S,
+    PAUSA_ENTRE_ESCENAS_S,
+    TITULO_S,
+    ZOOM_POR_ESCENA,
+)
 from engine.core.enums import AspectRatio, StoryStatus
 from engine.core.exceptions import DomainError
 from engine.core.models.story import Story
@@ -188,7 +193,7 @@ class ShortRenderer:
             y="h*0.10",
             tope=88,
         )
-        filtros.append(f"[0:v]{self._encuadrar()},{placa}[titulo]")
+        filtros.append(f"[0:v]{self._encuadrar(TITULO_S + TRANSICION_S, 0)},{placa}[titulo]")
         tramos.append("[titulo]")
 
         # --- las escenas ---------------------------------------------------------
@@ -199,7 +204,7 @@ class ShortRenderer:
         for i, escena in enumerate(story.scenes, start=1):
             largo = duraciones[i - 1] + TRANSICION_S
             entradas += ["-loop", "1", "-t", f"{largo:.3f}", "-i", escena.image_path]
-            filtros.append(f"[{i}:v]{self._encuadrar()}[v{i}]")
+            filtros.append(f"[{i}:v]{self._encuadrar(largo, i)}[v{i}]")
             tramos.append(f"[v{i}]")
 
         # --- el cierre, sobre la última imagen -----------------------------------
@@ -222,7 +227,10 @@ class ShortRenderer:
             tope=64,
             desde=max(0.0, antes_de_la_pregunta - ADELANTO_DEL_CIERRE_S),
         )
-        filtros.append(f"[{idx_cierre}:v]{self._encuadrar()},{pregunta}[cierre]")
+        filtros.append(
+            f"[{idx_cierre}:v]{self._encuadrar(cierre_s + TRANSICION_S, idx_cierre)},"
+            f"{pregunta}[cierre]"
+        )
         tramos.append("[cierre]")
 
         # --- el audio -------------------------------------------------------------
@@ -285,10 +293,48 @@ class ShortRenderer:
         return salida
 
     # ------------------------------------------------------------------------
-    def _encuadrar(self) -> str:
-        return (
+    def _encuadrar(self, dur_s: float | None = None, indice: int = 0) -> str:
+        """El filtro de video de UN tramo: encuadre vertical y, si se sabe cuánto dura,
+        movimiento de cámara.
+
+        Sin `dur_s` no hay movimiento — el zoom necesita saber cuántos cuadros tiene el
+        tramo para repartir el recorrido.
+
+        DOS COSAS DE `zoompan` QUE NO SON OPCIONALES, y las dos costaron un render entero:
+
+        - **`d=1`.** Con `d=N`, zoompan REPITE cada cuadro de entrada N veces; como la
+          entrada de una imagen fija ya trae todos sus cuadros (`-loop 1 -t`), un cuento de
+          48 s salió de OCHO MINUTOS. El avance se controla con `on`, el número de cuadro
+          que va saliendo, no con `d`.
+        - **`fps` ANTES del filtro**, no sólo dentro. La entrada de una imagen viene a
+          25 fps: sin fijarla antes, el tramo dura 5/6 de lo que debía (medido: 4,167 s
+          donde iban 5,000).
+
+        Se escala más grande ANTES de mover: hacer zoom sobre el tamaño final deja los
+        bordes pixelados.
+        """
+        base = (
             f"scale={self._ancho}:{self._alto}:force_original_aspect_ratio=increase,"
             f"crop={self._ancho}:{self._alto},setsar=1,fps={self._fps}"
+        )
+        if not dur_s or ZOOM_POR_ESCENA <= 0:
+            return base
+
+        cuadros = max(2, int(dur_s * self._fps))
+        paso = ZOOM_POR_ESCENA / cuadros
+        tope = 1 + ZOOM_POR_ESCENA
+        # Alterna acercarse y alejarse: ocho escenas con el mismo movimiento se leen como
+        # un efecto puesto encima, no como cámara.
+        if indice % 2 == 0:
+            z = f"min(1+{paso:.6f}*on,{tope:.3f})"
+        else:
+            z = f"max({tope:.3f}-{paso:.6f}*on,1.0)"
+        ancho, alto = int(self._ancho * 1.4), int(self._alto * 1.4)
+        return (
+            f"fps={self._fps},"
+            f"scale={ancho}:{alto}:force_original_aspect_ratio=increase,crop={ancho}:{alto},"
+            f"zoompan=z='{z}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+            f":s={self._ancho}x{self._alto}:fps={self._fps},setsar=1"
         )
 
     def _texto(

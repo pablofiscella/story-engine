@@ -153,7 +153,8 @@ def test_los_proveedores_reales_declaran_su_firma() -> None:
     from engine.providers.openai import OpenAIProvider
 
     assert "gpt-image-2" in OpenAIProvider("k").cache_fingerprint
-    assert "eleven_v3" in ElevenLabsProvider("k").cache_fingerprint
+    # v2 y no v3: v3 deformaba la primera palabra de cada tramo y no acepta `previous_text`.
+    assert "eleven_multilingual_v2" in ElevenLabsProvider("k").cache_fingerprint
     assert ElevenLabsProvider("k", stability=0.5).cache_fingerprint != (
         ElevenLabsProvider("k", stability=0.75).cache_fingerprint
     )

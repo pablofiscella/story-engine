@@ -407,12 +407,13 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         conflict="{protagonista} no puede solo con {objeto} pero le da vergüenza pedir ayuda",
         # Pesado a propósito: si se puede mover solo, no hay a quién pedirle ayuda.
         prop_override="una roca grande",
-        # NO EMPIEZA CON "Pedir". La voz deforma la primera palabra del tramo: se oyó
-        # "medir ayuda" primero y "seguir ayuda" después, con dos generaciones distintas.
-        # La palabra que sostiene el sentido no puede ir en el arranque; adelante va algo
-        # sacrificable.
-        moral=("Cuando algo te cuesta, pedir ayuda no es rendirse: "
-               "es animarse a decir que solo no puedo."),
+        # Ocho palabras, no diecisiete. La versión larga existía para que "Pedir" no
+        # quedara al principio del tramo —la voz deformaba la primera palabra—, pero eso
+        # era `eleven_v3`: con v2 y el contexto de la escena anterior el arranque salió
+        # limpio, medido con Whisper sobre el recorte suelto. Y la moraleja larga costaba
+        # 8,5 s de cola hablada sobre una imagen quieta, justo donde la curva de retención
+        # ya venía cayendo.
+        moral="Pedirle ayuda a un amigo no es rendirse.",
         question="¿A quién le pedís ayuda vos cuando algo te cuesta?",
         needs_prop=True,
         visual_notes={

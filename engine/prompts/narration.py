@@ -89,6 +89,7 @@ def scene_prompt(
     max_words: int,
     previous: str | None = None,
     is_last: bool = False,
+    is_first: bool = False,
 ) -> str:
     """El pedido de UNA escena.
 
@@ -113,6 +114,18 @@ def scene_prompt(
         f"- Clima emocional: {plan.emotion.value}\n"
         f"- MÁXIMO {max_words} palabras."
     )
+
+    if is_first:
+        # EL PRIMER SEGUNDO DECIDE. Con la primera escena presentando el lugar, el conflicto
+        # llegaba a los 6,6 s y el 72 % del público ya se había ido: 27,9 % "se quedaron para
+        # mirar" contra un 49,6 % de reproducción promedio — o sea que a quien se queda el
+        # cuento no le aburre, no llega a empezar. Medido el 15-ago-2026.
+        partes.append(
+            "Es la PRIMERA escena y la miran en un feed: si el primer segundo no engancha, "
+            "pasan de largo. Empezá por el problema o por algo que llame la atención —una "
+            "exclamación, una pregunta—, NO presentando el lugar ni contando quién es quién. "
+            "Nada de «había una vez» ni «un día X encontró…»."
+        )
 
     if is_last:
         partes.append(

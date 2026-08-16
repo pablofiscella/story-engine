@@ -142,3 +142,13 @@ COLA_FINAL_S = 1.2
 # arrancando de una (ver render/video.py), dos segundos de placa dejaban el título colgado
 # encima de una narración que ya iba por la mitad de la frase.
 TITULO_S = 0.8
+
+#: Cuánto se acerca (o se aleja) la cámara a lo largo de UNA escena, en tanto por uno.
+#:
+#: La imagen del cuento es un PNG fijo: sin esto, el video son ocho diapositivas de 5 s con
+#: voz encima. El 15-ago-2026 Pablo miró la retención —27,9 % se quedaban a mirar, y de esos
+#: la mitad se iba antes del segundo 13— y el diagnóstico fue el arranque, no el contenido:
+#: en un feed donde todo se mueve, una imagen quieta se lee como "esto no va a pasar nada".
+#:
+#: 9 % es poco a propósito. Más que eso marea en vertical y se nota el recorte de los bordes.
+ZOOM_POR_ESCENA = 0.09

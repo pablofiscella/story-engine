@@ -66,6 +66,7 @@ class StoryWriter:
                 personajes=personajes,
                 anterior=anterior,
                 es_ultima=plan.index == len(story.plan.scenes) - 1,
+                es_primera=plan.index == 0,
             )
             escena.image_prompt = image_prompts.compose(
                 escena, style=story.style, theme=story.theme, characters=personajes
@@ -126,6 +127,7 @@ class StoryWriter:
         personajes,
         anterior: str | None,
         es_ultima: bool,
+        es_primera: bool = False,
     ) -> Scene:
         """Una escena, con reintentos si el texto no entra en su duración."""
         tope = _presupuesto(plan.duration_s)
@@ -135,6 +137,7 @@ class StoryWriter:
             max_words=tope,
             previous=anterior,
             is_last=es_ultima,
+            is_first=es_primera,
         )
 
         texto = ""
@@ -165,6 +168,7 @@ class StoryWriter:
                         max_words=tope,
                         previous=anterior,
                         is_last=es_ultima,
+                        is_first=es_primera,
                     )
                     + prompts.retry_suffix(sobrante, tope)
                 )
