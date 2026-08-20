@@ -108,6 +108,33 @@ ADELANTO_DEL_CIERRE_S = 1.0
 #: Cuántos caracteres entran cómodos en una línea de un cuadro vertical.
 LARGO_DE_LINEA = 20
 
+#: Cuánto se le tolera a ffmpeg antes de darlo por colgado, por segundo de video.
+#:
+#: POR QUÉ EXISTE (20-ago-2026). Esta llamada no tenía `timeout`, y un ffmpeg que se
+#: traba **no se destraba nunca**: uno lanzado por un test el 16-ago quedó huérfano y
+#: siguió corriendo **87 horas**, quemando un core entero de los cuatro de la máquina,
+#: sobre archivos temporales que pytest había borrado hacía días. Se descubrió buscando
+#: por qué otras cosas iban lentas: el `load average` estaba en 12 con 4 CPUs.
+#:
+#: El número es GENEROSO a propósito. El timeout no está para cortar un render lento
+#: —eso sería peor que el problema: rompería trabajo bueno— sino para que uno colgado
+#: no viva para siempre. Medido el 20-ago-2026 en esta máquina: el render del test
+#: `test_el_video_no_puede_durar_menos_que_el_audio` pasó de **15 minutos sin
+#: terminar** para un short de menos de un minuto. O sea que la tolerancia tiene que
+#: estar MUY por encima de lo que uno esperaría, o el arreglo se convierte en un bug.
+SEGUNDOS_DE_RENDER_POR_SEGUNDO_DE_VIDEO = 120
+#: Piso, para que un video de cinco segundos no herede un timeout ridículo.
+TIMEOUT_MINIMO_S = 1800
+#: Techo. Más de dos horas para un short no es lentitud, es un cuelgue.
+TIMEOUT_MAXIMO_S = 7200
+
+
+def _timeout_de(duracion_s: float) -> float:
+    """Cuánto esperar a ffmpeg para un video de esta duración."""
+    return min(TIMEOUT_MAXIMO_S,
+               max(TIMEOUT_MINIMO_S,
+                   duracion_s * SEGUNDOS_DE_RENDER_POR_SEGUNDO_DE_VIDEO))
+
 
 def _envolver(texto: str, largo: int = LARGO_DE_LINEA) -> list[str]:
     """Parte el texto en líneas sin cortar palabras."""
@@ -280,13 +307,29 @@ class ShortRenderer:
         )
         filtro = ";".join([*filtros, cadena_v, cadena_a])
 
-        subprocess.run(
-            ["ffmpeg", "-y", *entradas, "-filter_complex", filtro,
-             "-map", "[video]", "-map", "[audio]",
-             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "medium", "-crf", "20",
-             "-c:a", "aac", "-b:a", "128k", "-shortest", str(salida)],
-            check=True, capture_output=True,
-        )
+        # `timeout` NO es opcional acá: sin él, un ffmpeg trabado sobrevive al proceso
+        # que lo lanzó y queda huérfano para siempre — no hay nadie que lo espere ni que
+        # lo mate. Ya pasó: ver SEGUNDOS_DE_RENDER_POR_SEGUNDO_DE_VIDEO.
+        #
+        # No hace falta matarlo a mano en un `finally`: `subprocess.run` ya mata al hijo
+        # ante CUALQUIER excepción —incluido el timeout y un Ctrl-C— porque su `except`
+        # es genérico y llama a `process.kill()`. Agregar el `finally` sería código que
+        # no hace nada y que hace creer que protege de algo.
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", *entradas, "-filter_complex", filtro,
+                 "-map", "[video]", "-map", "[audio]",
+                 "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "medium", "-crf", "20",
+                 "-c:a", "aac", "-b:a", "128k", "-shortest", str(salida)],
+                check=True, capture_output=True, timeout=_timeout_de(total),
+            )
+        except subprocess.TimeoutExpired as e:
+            # El mensaje dice cuánto se esperó y para qué video: sin eso, quien lo vea en
+            # un log no puede distinguir «se colgó» de «le quedó corto el tiempo».
+            raise DomainError(
+                f"ffmpeg no terminó de armar el video en {e.timeout:.0f}s "
+                f"(el video dura {total:.1f}s). Se lo dio por colgado y se lo mató."
+            ) from e
         if story.status is StoryStatus.NARRATED:
             story.advance_to(StoryStatus.RENDERED)
         story.metadata.touch()

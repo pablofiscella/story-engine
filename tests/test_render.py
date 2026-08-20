@@ -258,3 +258,107 @@ async def test_el_video_no_puede_durar_menos_que_el_audio(
          "-of", "csv=p=0", str(salida)],
         capture_output=True, text=True, check=True).stdout.strip())
     assert real >= audio - 0.15, f"el video ({real:.2f}s) corta el audio ({audio:.2f}s)"
+
+
+# --- que un ffmpeg colgado no viva para siempre -----------------------------------
+#
+# 20-ago-2026. La llamada a ffmpeg no tenía `timeout`, y un ffmpeg trabado **no se
+# destraba nunca**: uno lanzado por `test_el_video_no_puede_durar_menos_que_el_audio`
+# el 16-ago quedó huérfano y siguió corriendo 87 horas, quemando un core entero de los
+# cuatro de la máquina, sobre archivos temporales que pytest había borrado hacía días.
+# Apareció buscando por qué OTRAS cosas iban lentas: load average 12 con 4 CPUs.
+#
+# Estos tests no corren ffmpeg —interceptan la llamada— así que son instantáneos, a
+# diferencia del render de verdad, que en esta máquina pasó de 15 minutos.
+
+
+async def test_a_ffmpeg_se_le_pone_limite_de_tiempo(
+    tmp_path, monkeypatch, tema_dinos: Theme, estilo_3d: Style, dino: Character,
+    tuca: Character
+) -> None:
+    """EL test del arreglo. Se mira la llamada REAL, no el código fuente: un `timeout`
+    escrito en una constante que nadie le pasa a `subprocess.run` no protege de nada."""
+    import subprocess as sp
+
+    from engine.render import video as v
+
+    story = await _lista(tmp_path, tema_dinos, estilo_3d, dino, tuca)
+    visto = {}
+
+    def espia(cmd, **kw):
+        visto.update(kw)
+        visto["cmd"] = cmd
+        return sp.CompletedProcess(cmd, 0, b"", b"")
+
+    monkeypatch.setattr(v.subprocess, "run", espia)
+    ShortRenderer().render(story, tmp_path / "corto.mp4")
+
+    assert visto["cmd"][0] == "ffmpeg"
+    assert visto.get("timeout"), "a ffmpeg se lo llamó sin límite de tiempo"
+    assert visto["timeout"] >= v.TIMEOUT_MINIMO_S
+
+
+async def test_el_limite_no_puede_ser_tan_corto_que_mate_un_render_bueno(
+    tmp_path, monkeypatch, tema_dinos: Theme, estilo_3d: Style, dino: Character,
+    tuca: Character
+) -> None:
+    """El riesgo del arreglo es pasarse de celoso: un timeout ajustado rompe trabajo
+    bueno, que es PEOR que el problema que vino a resolver.
+
+    Medido en esta máquina el 20-ago-2026: el render de un short de menos de un minuto
+    pasó de 15 minutos sin terminar. El límite tiene que dejar lugar a eso con holgura."""
+    import subprocess as sp
+
+    from engine.render import video as v
+
+    story = await _lista(tmp_path, tema_dinos, estilo_3d, dino, tuca)
+    visto = {}
+
+    def espia(cmd, **kw):
+        visto.update(kw)
+        return sp.CompletedProcess(cmd, 0, b"", b"")
+
+    monkeypatch.setattr(v.subprocess, "run", espia)
+    ShortRenderer().render(story, tmp_path / "corto.mp4")
+
+    assert visto.get("timeout", 0) >= 1800, (
+        "media hora es el piso: un render real de este motor ya tardó más de 15 minutos"
+    )
+
+
+def test_el_limite_crece_con_la_duracion_pero_tiene_techo() -> None:
+    """Proporcional, para que un video más largo no herede el límite de un short; con
+    techo, porque a partir de cierto punto ya no es lentitud sino un cuelgue."""
+    from engine.render.video import (
+        TIMEOUT_MAXIMO_S,
+        TIMEOUT_MINIMO_S,
+        _timeout_de,
+    )
+
+    assert _timeout_de(1.0) == TIMEOUT_MINIMO_S, "un video corto igual merece el piso"
+    assert _timeout_de(60.0) > _timeout_de(30.0), "no crece con la duración"
+    assert _timeout_de(100_000.0) == TIMEOUT_MAXIMO_S, "sin techo, vuelve el cuelgue eterno"
+
+
+async def test_si_ffmpeg_se_cuelga_el_error_dice_QUE_paso(
+    tmp_path, monkeypatch, tema_dinos: Theme, estilo_3d: Style, dino: Character,
+    tuca: Character
+) -> None:
+    """Un `TimeoutExpired` crudo en un log no distingue «se colgó» de «le quedó corto el
+    tiempo». El mensaje tiene que decir cuánto se esperó y cuánto duraba el video, que es
+    lo que permite decidir si subir el límite o buscar el cuelgue."""
+    import subprocess as sp
+
+    from engine.render import video as v
+
+    story = await _lista(tmp_path, tema_dinos, estilo_3d, dino, tuca)
+
+    def se_cuelga(cmd, **kw):
+        raise sp.TimeoutExpired(cmd, kw.get("timeout", 0))
+
+    monkeypatch.setattr(v.subprocess, "run", se_cuelga)
+    with pytest.raises(DomainError) as e:
+        ShortRenderer().render(story, tmp_path / "corto.mp4")
+    msg = str(e.value)
+    assert "ffmpeg" in msg and "colgado" in msg
+    assert "s (el video dura" in msg, "el mensaje no dice cuánto se esperó ni cuánto dura"
