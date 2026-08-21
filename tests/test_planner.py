@@ -277,3 +277,47 @@ def test_el_beat_del_intento_tiene_nota_visual_o_escalacion():
         tiene = (NarrativeBeat.ATTEMPT in (p.visual_notes or {})
                  or NarrativeBeat.ATTEMPT in (p.escalations or {}))
         assert tiene, "%s: el intento no dice qué se ve ni cómo escala" % v
+
+
+# ── el título sale del valor, no del objeto (21-ago-2026) ───────────────────
+
+
+def test_cada_valor_trae_su_titulo_con_verbo():
+    """MEDIDO en Cuentitos, y separa por dos órdenes de magnitud:
+
+        «Dino aprende a compartir»  1.546 vistas   verbo + su objeto
+        «Dino lo intenta de nuevo»  1.374          verbo + su objeto
+        «Dino aprende a respetar»   1.253          verbo + su objeto
+        «Dino y su nuevo amigo»        48          descriptivo, sin verbo
+        «Dino se da cuenta»             2          verbo sin objeto
+
+    `_titular()` armaba «{héroe} y {objeto}» —«Dino y la roca pesada»—, que es exactamente la
+    forma de las 48 vistas: dice QUÉ HAY en el cuento y no QUÉ VA A PASAR."""
+    from engine.generators.values import PROFILES
+
+    for valor, perfil in PROFILES.items():
+        assert perfil.title, "%s no tiene título" % valor.value
+        assert "{protagonista}" in perfil.title, valor.value
+        # los dos patrones que fracasaron, prohibidos
+        t = perfil.title.replace("{protagonista}", "X")
+        assert not t.startswith("X y "), "«%s» es el patrón de las 48 vistas" % t
+        assert t not in ("X se da cuenta", "X se anima"), "verbo sin objeto: %r" % t
+
+
+def test_los_titulos_no_se_repiten():
+    """Dos cuentos con el mismo título compiten entre ellos en el feed."""
+    from engine.generators.values import PROFILES
+
+    titulos = [p.title for p in PROFILES.values()]
+    assert len(titulos) == len(set(titulos))
+
+
+def test_el_titular_pide_el_titulo_al_valor():
+    """Si vuelve a armarlo con el objeto, vuelven los títulos de 48 vistas."""
+    import inspect
+
+    from engine.generators.writer import StoryWriter
+
+    src = inspect.getsource(StoryWriter._titular)
+    assert "PROFILES" in src and "perfil.title" in src
+    assert 'f"{heroe} y {objeto}"' not in src, "ese es el patrón que mide peor"

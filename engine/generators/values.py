@@ -54,6 +54,20 @@ class ValueProfile:
     #: valor: en `compartir` es el que se queda afuera, en `amistad` es el que ya está
     #: jugando contento, en `empatía` es el que está mal desde el principio.
     companion_emotions: dict[NarrativeBeat, Emotion]
+    #: EL TITULO DEL CUENTO, con `{protagonista}` para completar.
+    #:
+    #: MEDIDO EN EL CANAL el 21-ago-2026, y la diferencia es de dos ordenes de magnitud:
+    #:
+    #:   «Dino aprende a compartir»  1.546 vistas   verbo + su objeto
+    #:   «Dino lo intenta de nuevo»  1.374          verbo + su objeto
+    #:   «Dino aprende a respetar»   1.253          verbo + su objeto
+    #:   «Dino y su nuevo amigo»        48          descriptivo, sin verbo
+    #:   «Dino se da cuenta»             2          verbo sin objeto: de que se da cuenta?
+    #:
+    #: `_titular()` armaba «{heroe} y {objeto}», que es justamente la forma de las 48 vistas.
+    #: Por eso el titulo pasa a vivir ACA: cada valor sabe cual es su verbo, y el objeto del
+    #: conflicto no sirve para titular —«Dino y la roca pesada» no dice que va a pasar.
+    title: str = ""
     #: Si el conflicto necesita un OBJETO concreto (compartir necesita algo que dar),
     #: qué tipo de objeto es. El motor elige uno del tema y lo mete en los propósitos,
     #: para que el texto Y el prompt de imagen hablen de la misma cosa.
@@ -141,6 +155,7 @@ def _companero_que_acompana() -> dict[NarrativeBeat, Emotion]:
 PROFILES: dict[EducationalValue, ValueProfile] = {
     EducationalValue.SHARING: ValueProfile(
         value=EducationalValue.SHARING,
+        title="{protagonista} aprende a compartir",
         conflict="{protagonista} tiene algo que quiere solo para sí",
         moral="Compartir nos hace más felices y fortalece la amistad.",
         question="¿Qué compartís vos con tus amigos?",
@@ -192,6 +207,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
     ),
     EducationalValue.FRIENDSHIP: ValueProfile(
         value=EducationalValue.FRIENDSHIP,
+        title="{protagonista} hace un amigo nuevo",
         conflict="{protagonista} está solo y no sabe cómo acercarse a los demás",
         moral="Un amigo se gana acercándose, no esperando.",
         question="¿Cómo conociste vos a tu mejor amigo?",
@@ -218,6 +234,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
     ),
     EducationalValue.RESPECT: ValueProfile(
         value=EducationalValue.RESPECT,
+        title="{protagonista} aprende a respetar",
         conflict="{protagonista} quiere imponer su forma de hacer las cosas",
         moral="Cada uno tiene su manera, y todas merecen respeto.",
         question="¿En qué sos diferente a tus amigos?",
@@ -243,6 +260,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
     ),
     EducationalValue.HONESTY: ValueProfile(
         value=EducationalValue.HONESTY,
+        title="{protagonista} dice la verdad",
         conflict="{protagonista} rompe o pierde algo y no quiere admitirlo",
         moral="Decir la verdad cuesta un ratito; la mentira pesa mucho más.",
         question="¿Alguna vez dijiste la verdad aunque diera miedo?",
@@ -282,6 +300,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
     ),
     EducationalValue.EMPATHY: ValueProfile(
         value=EducationalValue.EMPATHY,
+        title="{protagonista} entiende cómo se siente su amigo",
         conflict="{protagonista} no se da cuenta de que {companero} está mal",
         moral="Preguntar '¿estás bien?' puede cambiarle el día a alguien.",
         question="¿Cómo te das cuenta cuando un amigo está triste?",
@@ -306,6 +325,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
     ),
     EducationalValue.PATIENCE: ValueProfile(
         value=EducationalValue.PATIENCE,
+        title="{protagonista} aprende a esperar",
         conflict="{protagonista} quiere algo YA y no tolera esperar",
         moral="Las cosas más lindas necesitan su tiempo.",
         question="¿Qué estás esperando vos con muchas ganas?",
@@ -325,6 +345,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
     ),
     EducationalValue.COURAGE: ValueProfile(
         value=EducationalValue.COURAGE,
+        title="{protagonista} aprende a ser valiente",
         conflict="{protagonista} tiene miedo de algo que quiere hacer",
         moral="Ser valiente no es no tener miedo: es animarse igual.",
         question="¿A qué te animaste vos aunque tuvieras miedo?",
@@ -359,6 +380,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
     ),
     EducationalValue.PERSEVERANCE: ValueProfile(
         value=EducationalValue.PERSEVERANCE,
+        title="{protagonista} lo intenta de nuevo",
         conflict="a {protagonista} no le sale algo y quiere abandonar",
         moral="No salió todavía no es lo mismo que no puedo.",
         question="¿Qué aprendiste después de intentarlo muchas veces?",
@@ -401,6 +423,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
 
     EducationalValue.ASKING_FOR_HELP: ValueProfile(
         value=EducationalValue.ASKING_FOR_HELP,
+        title="{protagonista} aprende a pedir ayuda",
         # El conflicto NO es que no pueda: es que no quiere que lo vean necesitando.
         # Por eso el fracaso no puede ser "se cansó", tiene que ser "se quedó solo con el
         # problema mientras el otro estaba ahí al lado".
@@ -496,6 +519,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
 
     EducationalValue.APOLOGIZING: ValueProfile(
         value=EducationalValue.APOLOGIZING,
+        title="{protagonista} aprende a pedir perdón",
         # Acá el protagonista es el que rompe algo. El conflicto es la tentación de que no se
         # note — por eso el intento es esconder, no arreglar.
         #
@@ -590,6 +614,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
     # mismo, y en un canal que publica seguido eso se nota antes que cualquier otra cosa.
     EducationalValue.INCLUDING: ValueProfile(
         value=EducationalValue.INCLUDING,
+        title="{protagonista} llama al que está solo",
         conflict="{protagonista} está jugando y hay alguien mirando desde afuera",
         moral="Un juego se pone mejor cuando entra uno más.",
         question="¿A quién invitaste vos a jugar?",
@@ -640,6 +665,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
     ),
     EducationalValue.TAKING_TURNS: ValueProfile(
         value=EducationalValue.TAKING_TURNS,
+        title="{protagonista} aprende a esperar su turno",
         conflict="{protagonista} y {companero} quieren {objeto} en el mismo momento",
         moral="Cuando cada uno espera su turno, juegan los dos.",
         question="¿Cuándo esperaste vos tu turno?",
@@ -688,6 +714,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
     ),
     EducationalValue.CARING: ValueProfile(
         value=EducationalValue.CARING,
+        title="{protagonista} aprende a cuidar",
         conflict="{protagonista} tiene a su cargo {objeto}, que no puede reclamar nada",
         moral="Cuidar es acordarse aunque nadie te lo vuelva a pedir.",
         question="¿Qué cuidás vos todos los días?",
@@ -738,6 +765,7 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
     ),
     EducationalValue.KEEPING_PROMISES: ValueProfile(
         value=EducationalValue.KEEPING_PROMISES,
+        title="{protagonista} cumple lo que prometió",
         conflict="{protagonista} prometió algo y aparece un plan mucho mejor",
         moral="Lo que prometiste vale justo cuando cuesta cumplirlo.",
         question="¿Qué promesa cumpliste vos aunque te costara?",

@@ -105,19 +105,29 @@ class StoryWriter:
                 break
         if not heroe and story.characters:
             heroe = (story.characters[0].character.name or "").strip()
-        objeto = ""
-        if story.plan is not None:
-            objeto = (getattr(story.plan, "object_name", "") or "").strip()
-        if not objeto:
-            # El objeto vive en el plan; si el plan no lo expone, sale de la primera escena.
-            import re as _re
-            primera = escenas[0].narration if escenas else ""
-            m = _re.search(r"\b(?:un|una|el|la|los|las)\s+(\w+(?:\s+\w+)?)", primera)
-            objeto = m.group(1).strip() if m else ""
-        objeto = objeto.rstrip(".,!?")
-        if heroe and objeto:
-            return f"{heroe} y {objeto}"
-        return heroe or objeto or ""
+        # EL TITULO SALE DEL VALOR, NO DEL OBJETO. Medido en el canal el 21-ago-2026:
+        #
+        #   «Dino aprende a compartir»  1.546 vistas
+        #   «Dino lo intenta de nuevo»  1.374
+        #   «Dino aprende a respetar»   1.253
+        #   «Dino y su nuevo amigo»        48   <- lo que devolvia esta funcion
+        #   «Dino se da cuenta»             2
+        #
+        # Esta funcion armaba «{heroe} y {objeto}» —«Dino y la roca pesada»— que es la forma
+        # de las 48 vistas: describe QUE HAY en el cuento y no QUE VA A PASAR. El titulo
+        # ahora lo trae el valor, que es el unico que sabe cual es el verbo de la historia.
+        valor = getattr(story, "value", None) or getattr(
+            getattr(story, "plan", None), "value", None)
+        if valor is not None:
+            from engine.generators.values import PROFILES
+
+            perfil = PROFILES.get(valor)
+            if perfil is not None and perfil.title:
+                return perfil.title.format(protagonista=heroe) if heroe else perfil.title
+
+        # Respaldo, sólo si el valor no llegó hasta acá: el nombre solo es mejor que
+        # «{heroe} y {objeto}», porque al menos no promete algo que el título no cumple.
+        return heroe or ""
 
     async def _escribir_escena(
         self,
