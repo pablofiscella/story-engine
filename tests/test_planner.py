@@ -321,3 +321,32 @@ def test_el_titular_pide_el_titulo_al_valor():
     src = inspect.getsource(StoryWriter._titular)
     assert "PROFILES" in src and "perfil.title" in src
     assert 'f"{heroe} y {objeto}"' not in src, "ese es el patrón que mide peor"
+
+
+def test_cuidar_pide_algo_vivo_y_no_la_pelota_del_tema():
+    """Sin `prop_override`, el motor toma el primer prop del tema —«una pelota de colores»—
+    y el cuento se rompe solo: una pelota no empeora por falta de cuidado, y el final salió
+    «Dino mira la pelota desinflada y sonríe, está feliz».
+
+    Lo que se cuida tiene que poder ESTAR PEOR y después MEJOR, y tiene que verse."""
+    from engine.core.enums import EducationalValue
+    from engine.generators.values import PROFILES
+
+    p = PROFILES[EducationalValue.CARING]
+    assert p.needs_prop and p.prop_override, "cuidar necesita su propio objeto"
+    assert "pelota" not in p.prop_override.lower()
+
+
+def test_ningun_proposito_grita_en_mayusculas():
+    """Las MAYÚSCULAS de énfasis son instrucciones para el escritor, no texto para el chico
+    — y se filtran: salió «Dino se da cuenta que falta ÉL» en la narración."""
+    import re
+
+    from engine.generators.values import PROFILES
+
+    for valor, perfil in PROFILES.items():
+        for beat, texto in perfil.purposes.items():
+            gritos = [w for w in re.findall(r"\b[A-ZÁÉÍÓÚÑ]{2,}\b", texto)
+                      if w not in ("CONTINUITY",)]
+            assert not gritos, "%s/%s grita %s: se filtra al cuento" % (
+                valor.value, beat.value, gritos)

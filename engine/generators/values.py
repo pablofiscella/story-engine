@@ -509,8 +509,8 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
             # este cuento salió con el protagonista SOLO justo después de haber pedido ayuda,
             # que es lo contrario de lo que enseña. Pablo lo vio enseguida.
             NarrativeBeat.ENDING: (
-                "{protagonista} y {companero} empujan {objeto} JUNTOS, uno de cada lado, y "
-                "esta vez sí se mueve"
+                "{protagonista} y {companero} empujan {objeto} al mismo tiempo, uno de "
+                "cada lado, y esta vez sí se mueve"
             ),
         },
         emotions=_emociones_base(),
@@ -636,12 +636,12 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         },
         escalations={
             NarrativeBeat.ATTEMPT: (
-                "{protagonista} sigue jugando y hace de cuenta que no lo vio",
+                "{protagonista} sigue jugando y hace de cuenta que no vio a {companero}, que no se mueve de donde está",
                 "{protagonista} juega más fuerte, para tapar la incomodidad",
             ),
             NarrativeBeat.FAILURE: (
                 "El juego pierde la gracia y {protagonista} no sabe por qué",
-                "{protagonista} mira de reojo a {companero} y se siente mal",
+                "{protagonista} mira de reojo a {companero}, que SIGUE parado sin jugar, y se siente mal",
             ),
         },
         purposes={
@@ -650,9 +650,9 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
                 "{companero} aparece y se queda mirando desde un costado, sin pedir nada"
             ),
             NarrativeBeat.ATTEMPT: "{protagonista} sigue jugando como si no lo hubiera visto",
-            NarrativeBeat.FAILURE: "El juego se pone aburrido y {protagonista} no entiende por qué",
+            NarrativeBeat.FAILURE: "El juego se pone aburrido; {companero} sigue afuera, sin jugar, y {protagonista} no entiende por qué se aburrió",
             NarrativeBeat.LESSON: (
-                "{protagonista} mira a {companero} y entiende que le falta ÉL, no un juguete"
+                "{protagonista} mira a {companero} y entiende que lo que falta no es un juguete sino su amigo"
             ),
             NarrativeBeat.ENDING: (
                 "{protagonista} llama a {companero} y juegan juntos: el juego se pone "
@@ -714,6 +714,12 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
     ),
     EducationalValue.CARING: ValueProfile(
         value=EducationalValue.CARING,
+        # UNA PLANTITA Y NO LA PELOTA DEL TEMA. Sin esto el motor toma el primer prop del
+        # tema —«una pelota de colores»— y el cuento se rompe solo: una pelota no empeora
+        # por falta de cuidado, y el final quedaba en «Dino mira la pelota desinflada y
+        # sonríe, está feliz». Lo que se cuida tiene que poder ESTAR PEOR y después MEJOR,
+        # y tiene que verse en el dibujo.
+        prop_override="una plantita en una maceta",
         title="{protagonista} aprende a cuidar",
         conflict="{protagonista} tiene a su cargo {objeto}, que no puede reclamar nada",
         moral="Cuidar es acordarse aunque nadie te lo vuelva a pedir.",
