@@ -1,0 +1,352 @@
+"""El planificador: la mitad del motor que DECIDE.
+
+Todo lo que se prueba acá es determinista — no hay IA de por medio. Si estos tests
+pasan, cualquier historia que salga del planificador tiene estructura válida.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from engine.core.enums import AgeRange, EducationalValue, NarrativeBeat
+from engine.core.exceptions import DomainError
+from engine.core.models import Character, Theme
+from engine.generators import PROFILES, StoryPlanner
+
+
+@pytest.fixture
+def planner() -> StoryPlanner:
+    return StoryPlanner()
+
+
+def _plan(
+    planner, tema, dino, rexo=None, *,
+    valor=EducationalValue.SHARING, dur=30.0, edad=AgeRange.PRESCHOOL,
+):
+    return planner.create_plan(
+        theme=tema, value=valor, age_range=edad, duration_s=dur,
+        protagonist=dino, companion=rexo,
+    )
+
+
+# --- estructura ------------------------------------------------------------------
+
+
+def test_treinta_segundos_para_preescolar_da_el_arco_canonico(
+    planner: StoryPlanner, tema_dinos: Theme, dino: Character, tuca: Character
+) -> None:
+    """El caso de referencia: 6 escenas de 5s, igual que el storyboard real."""
+    plan = _plan(planner, tema_dinos, dino, tuca)
+    assert len(plan.scenes) == 6
+    assert all(s.duration_s == 5.0 for s in plan.scenes)
+    assert plan.beats == [
+        NarrativeBeat.HOOK,
+        NarrativeBeat.PROBLEM,
+        NarrativeBeat.ATTEMPT,
+        NarrativeBeat.FAILURE,
+        NarrativeBeat.LESSON,
+        NarrativeBeat.ENDING,
+    ]
+
+
+@pytest.mark.parametrize("dur", [15.0, 20.0, 30.0, 45.0, 60.0, 90.0, 180.0])
+def test_cualquier_duracion_produce_un_plan_valido(
+    planner: StoryPlanner, tema_dinos: Theme, dino: Character, tuca: Character, dur: float
+) -> None:
+    """`StoryPlan` se valida solo, así que construirlo YA prueba arco y duración."""
+    plan = _plan(planner, tema_dinos, dino, tuca, dur=dur)
+    assert plan.total_duration_s == pytest.approx(dur, abs=1.0)
+    assert plan.beats[0] is NarrativeBeat.HOOK
+    assert plan.beats[-1] is NarrativeBeat.ENDING
+
+
+@pytest.mark.parametrize("edad", list(AgeRange))
+@pytest.mark.parametrize("valor", list(EducationalValue))
+def test_toda_combinacion_de_valor_y_edad_funciona(
+    planner: StoryPlanner, tema_dinos: Theme, dino: Character, tuca: Character,
+    edad: AgeRange, valor: EducationalValue,
+) -> None:
+    """8 valores × 4 edades = 32 combinaciones, todas válidas sin tocar código."""
+    plan = _plan(planner, tema_dinos, dino, tuca, valor=valor, edad=edad)
+    assert len(plan.scenes) >= 3
+
+
+def test_mas_chicos_tienen_escenas_mas_cortas(
+    planner: StoryPlanner, tema_dinos: Theme, dino: Character, tuca: Character
+) -> None:
+    """La atención de un chico de 2 años no da lo mismo que la de uno de 8."""
+    bebes = _plan(planner, tema_dinos, dino, tuca, dur=60.0, edad=AgeRange.TODDLER)
+    grandes = _plan(planner, tema_dinos, dino, tuca, dur=60.0, edad=AgeRange.KID)
+    assert len(bebes.scenes) > len(grandes.scenes)
+
+
+def test_una_historia_larga_repite_beats_sin_romper_el_arco(
+    planner: StoryPlanner, tema_dinos: Theme, dino: Character, tuca: Character
+) -> None:
+    plan = _plan(planner, tema_dinos, dino, tuca, dur=60.0, edad=AgeRange.KID)
+    assert len(plan.scenes) > 6
+    assert plan.beats.count(NarrativeBeat.ATTEMPT) >= 2
+
+
+def test_los_beats_repetidos_reciben_instrucciones_distintas(
+    planner: StoryPlanner, tema_dinos: Theme, dino: Character, tuca: Character
+) -> None:
+    """Si el escritor recibe dos veces la misma orden, escribe dos escenas iguales."""
+    plan = _plan(planner, tema_dinos, dino, tuca, dur=60.0, edad=AgeRange.KID)
+    intentos = [s.purpose for s in plan.scenes if s.beat is NarrativeBeat.ATTEMPT]
+    assert len(intentos) == len(set(intentos))
+
+
+def test_una_historia_corta_recorta_pero_conserva_el_aprendizaje(
+    planner: StoryPlanner, tema_dinos: Theme, dino: Character, tuca: Character
+) -> None:
+    """Lo primero que se saca es el fracaso; la enseñanza es lo último que se pierde."""
+    plan = _plan(planner, tema_dinos, dino, tuca, dur=15.0, edad=AgeRange.TODDLER)
+    assert NarrativeBeat.LESSON in plan.beats
+    assert NarrativeBeat.FAILURE not in plan.beats
+
+
+def test_duracion_imposible_falla_con_un_mensaje_claro(
+    planner: StoryPlanner, tema_dinos: Theme, dino: Character
+) -> None:
+    with pytest.raises(DomainError, match="No se puede armar"):
+        _plan(planner, tema_dinos, dino, dur=4.0)
+
+
+# --- contenido -------------------------------------------------------------------
+
+
+def test_el_protagonista_esta_en_todas_las_escenas(
+    planner: StoryPlanner, tema_dinos: Theme, dino: Character, tuca: Character
+) -> None:
+    plan = _plan(planner, tema_dinos, dino, tuca)
+    assert all(dino.id in s.character_ids for s in plan.scenes)
+
+
+def test_el_companero_solo_aparece_donde_hace_falta(
+    planner: StoryPlanner, tema_dinos: Theme, dino: Character, tuca: Character
+) -> None:
+    """No está de relleno: aparece en los beats donde el conflicto lo necesita."""
+    plan = _plan(planner, tema_dinos, dino, tuca)
+    con_companero = [s for s in plan.scenes if tuca.id in s.character_ids]
+    assert 0 < len(con_companero) < len(plan.scenes)
+
+
+def test_sin_companero_no_se_inventa_ninguno(
+    planner: StoryPlanner, tema_dinos: Theme, dino: Character
+) -> None:
+    """Un personaje fantasma es la causa de que el ilustrador dibuje a alguien
+    distinto en cada escena."""
+    plan = _plan(planner, tema_dinos, dino)
+    assert plan.character_ids == {dino.id}
+    assert not any("{companero}" in s.purpose for s in plan.scenes)
+    assert not any("Los dos" in s.purpose for s in plan.scenes)
+
+
+def test_los_nombres_reales_reemplazan_las_plantillas(
+    planner: StoryPlanner, tema_dinos: Theme, dino: Character, tuca: Character
+) -> None:
+    plan = _plan(planner, tema_dinos, dino, tuca)
+    texto = " ".join(s.purpose for s in plan.scenes)
+    assert "{" not in texto
+    assert dino.name in texto and tuca.name in texto
+
+
+def test_los_lugares_salen_del_tema(
+    planner: StoryPlanner, tema_dinos: Theme, dino: Character, tuca: Character
+) -> None:
+    """Inventar lugares que el tema no declaró rompe la coherencia del mundo."""
+    plan = _plan(planner, tema_dinos, dino, tuca)
+    assert all(s.location in tema_dinos.locations for s in plan.scenes)
+
+
+def test_la_curva_emocional_arranca_curiosa_y_cierra_bien(
+    planner: StoryPlanner, tema_dinos: Theme, dino: Character, tuca: Character
+) -> None:
+    from engine.core.enums import Emotion
+
+    plan = _plan(planner, tema_dinos, dino, tuca)
+    assert plan.scenes[-1].emotion in (Emotion.JOY, Emotion.PRIDE)
+
+
+def test_es_determinista(
+    planner: StoryPlanner, tema_dinos: Theme, dino: Character, tuca: Character
+) -> None:
+    """Mismos parámetros, mismo plan. Sin esto no se puede reproducir un bug."""
+    assert _plan(planner, tema_dinos, dino, tuca) == _plan(planner, tema_dinos, dino, tuca)
+
+
+# --- perfiles de valor -----------------------------------------------------------
+
+
+def test_todo_valor_del_enum_tiene_su_perfil() -> None:
+    """Un valor sin perfil generaría una historia sin conflicto real."""
+    assert set(PROFILES) == set(EducationalValue)
+
+
+def test_cada_perfil_cubre_todo_el_arco() -> None:
+    for valor, perfil in PROFILES.items():
+        faltan = set(NarrativeBeat) - set(perfil.purposes)
+        assert not faltan, f"{valor.value} no tiene propósito para {faltan}"
+        faltan = set(NarrativeBeat) - set(perfil.emotions)
+        assert not faltan, f"{valor.value} no tiene emoción para {faltan}"
+
+
+def test_cada_valor_tiene_moraleja_y_pregunta_propias() -> None:
+    morales = {p.moral for p in PROFILES.values()}
+    preguntas = {p.question for p in PROFILES.values()}
+    assert len(morales) == len(PROFILES)
+    assert len(preguntas) == len(PROFILES)
+
+
+# ── los cuatro valores que abrieron la serie (21-ago-2026) ──────────────────
+#
+# Pablo: *"Los videos de dinos creo que ya se acabaron. Necesitamos seguir haciendo"*.
+# Al chequear no faltaban videos: faltaban TEMAS. Los diez valores originales estaban todos
+# usados —cinco publicados en Cuentitos y cinco agendados— así que la serie no tenía con qué
+# seguir.
+
+
+def test_los_cuatro_nuevos_tienen_perfil_completo():
+    """Un valor sin perfil es una palabra suelta: el planificador no sabe qué conflicto
+    armar y el cuento sale sin tensión."""
+    from engine.core.enums import EducationalValue, NarrativeBeat
+    from engine.generators.values import PROFILES
+
+    for v in ("incluir", "esperar-turno", "cuidar", "cumplir"):
+        p = PROFILES[EducationalValue(v)]
+        assert p.conflict and p.moral and p.question, v
+        # los seis beats, sin agujeros: un beat sin propósito lo inventa el escritor
+        for beat in NarrativeBeat:
+            assert beat in p.purposes, "%s sin propósito en %s" % (v, beat)
+            assert beat in p.emotions, "%s sin emoción en %s" % (v, beat)
+            assert beat in p.companion_emotions, "%s sin emoción del compañero en %s" % (v, beat)
+
+
+def test_ninguno_de_los_nuevos_se_pisa_con_otro():
+    """Dos valores que se resuelven con la misma escena dan dos cuentos que se sienten el
+    mismo. En un canal que publica seguido, eso se nota antes que cualquier otra cosa."""
+    from engine.generators.values import PROFILES
+
+    morales = [p.moral for p in PROFILES.values()]
+    assert len(morales) == len(set(morales)), "hay dos valores con la misma moraleja"
+    conflictos = [p.conflict for p in PROFILES.values()]
+    assert len(conflictos) == len(set(conflictos)), "hay dos valores con el mismo conflicto"
+    preguntas = [p.question for p in PROFILES.values()]
+    assert len(preguntas) == len(set(preguntas)), "hay dos valores con la misma pregunta"
+
+
+def test_las_preguntas_nuevas_no_arrancan_con_y_vos():
+    """Las diez originales arrancaban con "¿Y vos," y la voz las leía mal de forma
+    recurrente: salió "¿Mi voz?" en un cuento y "¿Para quién" en otro. El "vos" va DESPUÉS
+    del verbo."""
+    from engine.core.enums import EducationalValue
+    from engine.generators.values import PROFILES
+
+    for v in ("incluir", "esperar-turno", "cuidar", "cumplir"):
+        q = PROFILES[EducationalValue(v)].question
+        assert not q.lower().startswith("¿y vos"), q
+        assert " vos" in q, "la pregunta tiene que interpelar al que mira: %r" % q
+
+
+def test_los_que_necesitan_objeto_lo_declaran():
+    """`esperar-turno` sin una cosa concreta que se use de a uno es una abstracción, y el
+    ilustrador no tiene qué dibujar. Lo mismo `cuidar`, donde el objeto es lo que no puede
+    reclamar."""
+    from engine.core.enums import EducationalValue
+    from engine.generators.values import PROFILES
+
+    assert PROFILES[EducationalValue.TAKING_TURNS].needs_prop
+    assert PROFILES[EducationalValue.CARING].needs_prop
+    for v in (EducationalValue.TAKING_TURNS, EducationalValue.CARING):
+        p = PROFILES[v]
+        assert any("{objeto}" in t for t in p.purposes.values()), (
+            "%s declara needs_prop pero no usa {objeto} en ningún propósito" % v.value)
+
+
+def test_el_beat_del_intento_tiene_nota_visual_o_escalacion():
+    """El `intento` era el único beat sin nota visual, y por eso salió mal: el cuento decía
+    "empuja la roca y se rompe" y el ilustrador partió LA ROCA en vez del palito. Donde el
+    catálogo no dice qué se ve, lo inventa el escritor y lo interpreta el ilustrador, cada
+    uno por su lado."""
+    from engine.core.enums import EducationalValue, NarrativeBeat
+    from engine.generators.values import PROFILES
+
+    for v in ("incluir", "esperar-turno", "cuidar", "cumplir"):
+        p = PROFILES[EducationalValue(v)]
+        tiene = (NarrativeBeat.ATTEMPT in (p.visual_notes or {})
+                 or NarrativeBeat.ATTEMPT in (p.escalations or {}))
+        assert tiene, "%s: el intento no dice qué se ve ni cómo escala" % v
+
+
+# ── el título sale del valor, no del objeto (21-ago-2026) ───────────────────
+
+
+def test_cada_valor_trae_su_titulo_con_verbo():
+    """MEDIDO en Cuentitos, y separa por dos órdenes de magnitud:
+
+        «Dino aprende a compartir»  1.546 vistas   verbo + su objeto
+        «Dino lo intenta de nuevo»  1.374          verbo + su objeto
+        «Dino aprende a respetar»   1.253          verbo + su objeto
+        «Dino y su nuevo amigo»        48          descriptivo, sin verbo
+        «Dino se da cuenta»             2          verbo sin objeto
+
+    `_titular()` armaba «{héroe} y {objeto}» —«Dino y la roca pesada»—, que es exactamente la
+    forma de las 48 vistas: dice QUÉ HAY en el cuento y no QUÉ VA A PASAR."""
+    from engine.generators.values import PROFILES
+
+    for valor, perfil in PROFILES.items():
+        assert perfil.title, "%s no tiene título" % valor.value
+        assert "{protagonista}" in perfil.title, valor.value
+        # los dos patrones que fracasaron, prohibidos
+        t = perfil.title.replace("{protagonista}", "X")
+        assert not t.startswith("X y "), "«%s» es el patrón de las 48 vistas" % t
+        assert t not in ("X se da cuenta", "X se anima"), "verbo sin objeto: %r" % t
+
+
+def test_los_titulos_no_se_repiten():
+    """Dos cuentos con el mismo título compiten entre ellos en el feed."""
+    from engine.generators.values import PROFILES
+
+    titulos = [p.title for p in PROFILES.values()]
+    assert len(titulos) == len(set(titulos))
+
+
+def test_el_titular_pide_el_titulo_al_valor():
+    """Si vuelve a armarlo con el objeto, vuelven los títulos de 48 vistas."""
+    import inspect
+
+    from engine.generators.writer import StoryWriter
+
+    src = inspect.getsource(StoryWriter._titular)
+    assert "PROFILES" in src and "perfil.title" in src
+    assert 'f"{heroe} y {objeto}"' not in src, "ese es el patrón que mide peor"
+
+
+def test_cuidar_pide_algo_vivo_y_no_la_pelota_del_tema():
+    """Sin `prop_override`, el motor toma el primer prop del tema —«una pelota de colores»—
+    y el cuento se rompe solo: una pelota no empeora por falta de cuidado, y el final salió
+    «Dino mira la pelota desinflada y sonríe, está feliz».
+
+    Lo que se cuida tiene que poder ESTAR PEOR y después MEJOR, y tiene que verse."""
+    from engine.core.enums import EducationalValue
+    from engine.generators.values import PROFILES
+
+    p = PROFILES[EducationalValue.CARING]
+    assert p.needs_prop and p.prop_override, "cuidar necesita su propio objeto"
+    assert "pelota" not in p.prop_override.lower()
+
+
+def test_ningun_proposito_grita_en_mayusculas():
+    """Las MAYÚSCULAS de énfasis son instrucciones para el escritor, no texto para el chico
+    — y se filtran: salió «Dino se da cuenta que falta ÉL» en la narración."""
+    import re
+
+    from engine.generators.values import PROFILES
+
+    for valor, perfil in PROFILES.items():
+        for beat, texto in perfil.purposes.items():
+            gritos = [w for w in re.findall(r"\b[A-ZÁÉÍÓÚÑ]{2,}\b", texto)
+                      if w not in ("CONTINUITY",)]
+            assert not gritos, "%s/%s grita %s: se filtra al cuento" % (
+                valor.value, beat.value, gritos)
