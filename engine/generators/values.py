@@ -583,6 +583,212 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         companion_emotions=_emociones_companero(),
     ),
 
+    # ── los cuatro que abrieron la serie cuando se agotaron los diez primeros ──────
+    #
+    # 21-ago-2026. Cada uno tiene su propio conflicto y NO una variante del de al lado:
+    # dos valores que se resuelven con la misma escena dan dos cuentos que se sienten el
+    # mismo, y en un canal que publica seguido eso se nota antes que cualquier otra cosa.
+    EducationalValue.INCLUDING: ValueProfile(
+        value=EducationalValue.INCLUDING,
+        conflict="{protagonista} está jugando y hay alguien mirando desde afuera",
+        moral="Un juego se pone mejor cuando entra uno más.",
+        question="¿A quién invitaste vos a jugar?",
+        # El que está afuera NO pide entrar: mira. Si pidiera, el cuento sería sobre decir
+        # que sí, y eso ya lo hace `compartir`. Acá el trabajo es DARSE CUENTA.
+        visual_notes={
+            NarrativeBeat.PROBLEM: (
+                "{companero} está de pie a un costado, quieto, con las manos juntas, "
+                "mirando el juego; {protagonista} está de espaldas a él, jugando"
+            ),
+            NarrativeBeat.ATTEMPT: (
+                "{protagonista} juega más fuerte y más alto, de espaldas a {companero}, "
+                "que sigue en el mismo lugar sin moverse"
+            ),
+            NarrativeBeat.LESSON: (
+                "{protagonista} gira la cabeza y por primera vez le ve la cara a "
+                "{companero}"
+            ),
+        },
+        escalations={
+            NarrativeBeat.ATTEMPT: (
+                "{protagonista} sigue jugando y hace de cuenta que no lo vio",
+                "{protagonista} juega más fuerte, para tapar la incomodidad",
+            ),
+            NarrativeBeat.FAILURE: (
+                "El juego pierde la gracia y {protagonista} no sabe por qué",
+                "{protagonista} mira de reojo a {companero} y se siente mal",
+            ),
+        },
+        purposes={
+            NarrativeBeat.HOOK: "Presentar a {protagonista} jugando y pasándola muy bien",
+            NarrativeBeat.PROBLEM: (
+                "{companero} aparece y se queda mirando desde un costado, sin pedir nada"
+            ),
+            NarrativeBeat.ATTEMPT: "{protagonista} sigue jugando como si no lo hubiera visto",
+            NarrativeBeat.FAILURE: "El juego se pone aburrido y {protagonista} no entiende por qué",
+            NarrativeBeat.LESSON: (
+                "{protagonista} mira a {companero} y entiende que le falta ÉL, no un juguete"
+            ),
+            NarrativeBeat.ENDING: (
+                "{protagonista} llama a {companero} y juegan juntos: el juego se pone "
+                "mucho mejor que antes"
+            ),
+        },
+        emotions={**_emociones_base(), NarrativeBeat.FAILURE: Emotion.SADNESS},
+        # El de afuera: quiere entrar, se pone triste, y termina adentro.
+        companion_emotions=_emociones_companero(),
+    ),
+    EducationalValue.TAKING_TURNS: ValueProfile(
+        value=EducationalValue.TAKING_TURNS,
+        conflict="{protagonista} y {companero} quieren {objeto} en el mismo momento",
+        moral="Cuando cada uno espera su turno, juegan los dos.",
+        question="¿Cuándo esperaste vos tu turno?",
+        # Necesita el objeto: sin una cosa concreta que se pueda usar de a uno, "el turno"
+        # es una abstracción y el ilustrador no tiene qué dibujar.
+        needs_prop=True,
+        visual_notes={
+            NarrativeBeat.PROBLEM: (
+                "{protagonista} y {companero} tienen cada uno una mano en {objeto}, "
+                "tirando cada uno para su lado"
+            ),
+            NarrativeBeat.FAILURE: (
+                "{objeto} en el piso entre los dos, y los dos mirándolo con los brazos "
+                "cruzados, uno a cada lado"
+            ),
+        },
+        escalations={
+            NarrativeBeat.ATTEMPT: (
+                "{protagonista} agarra {objeto} más fuerte para quedárselo",
+                "{protagonista} corre con {objeto} para usarlo primero",
+            ),
+        },
+        purposes={
+            NarrativeBeat.HOOK: "Presentar a {protagonista} y {companero} contentos, con {objeto} cerca",
+            NarrativeBeat.PROBLEM: "{protagonista} y {companero} quieren {objeto} en el mismo momento y ninguno lo suelta",
+            NarrativeBeat.ATTEMPT: "{protagonista} tira más fuerte para quedárselo primero",
+            NarrativeBeat.FAILURE: (
+                "De tanto tironear nadie lo usa: {objeto} queda tirado, y {protagonista} y {companero} enojados"
+            ),
+            NarrativeBeat.LESSON: (
+                "Alguien propone contar hasta diez y cambiar: uno usa {objeto} mientras el "
+                "otro cuenta"
+            ),
+            NarrativeBeat.ENDING: (
+                "{protagonista} y {companero} se turnan con {objeto}: esperar el turno resultó más "
+                "rápido que pelear"
+            ),
+        },
+        emotions={**_emociones_base(), NarrativeBeat.PROBLEM: Emotion.FRUSTRATION},
+        # Los dos quieren lo mismo, así que el compañero sufre el mismo conflicto.
+        companion_emotions={
+            **_emociones_companero(),
+            NarrativeBeat.PROBLEM: Emotion.FRUSTRATION,
+            NarrativeBeat.ATTEMPT: Emotion.FRUSTRATION,
+        },
+    ),
+    EducationalValue.CARING: ValueProfile(
+        value=EducationalValue.CARING,
+        conflict="{protagonista} tiene a su cargo {objeto}, que no puede reclamar nada",
+        moral="Cuidar es acordarse aunque nadie te lo vuelva a pedir.",
+        question="¿Qué cuidás vos todos los días?",
+        # El objeto acá es algo VIVO Y FRÁGIL —una plantita, un huevo, un pichón—. Es lo
+        # que distingue este valor de `empatía`: lo que se cuida no puede decir que está mal.
+        needs_prop=True,
+        visual_notes={
+            NarrativeBeat.PROBLEM: (
+                "{protagonista} de espaldas a {objeto}, entusiasmado con otra cosa; "
+                "{objeto} solo, en un rincón del cuadro"
+            ),
+            NarrativeBeat.FAILURE: (
+                "{objeto} caído o marchito, y {protagonista} agachado al lado, mirándolo "
+                "con las manos en las rodillas"
+            ),
+            NarrativeBeat.ENDING: (
+                "{protagonista} de cuclillas junto a {objeto}, que se ve mejor que antes; "
+                "{companero} al lado, mirando lo mismo"
+            ),
+        },
+        escalations={
+            NarrativeBeat.ATTEMPT: (
+                "{protagonista} se va a jugar y piensa que después se ocupa",
+                "{protagonista} vuelve rápido, mira {objeto} de lejos y se va otra vez",
+            ),
+        },
+        purposes={
+            NarrativeBeat.HOOK: "{protagonista} recibe {objeto} para cuidarlo y promete hacerlo",
+            NarrativeBeat.PROBLEM: "Aparece algo mucho más divertido y {objeto} queda atrás",
+            NarrativeBeat.ATTEMPT: "{protagonista} se va a jugar y deja {objeto} para después",
+            NarrativeBeat.FAILURE: (
+                "{objeto} se pone mal por falta de cuidado, sin haber pedido nada"
+            ),
+            NarrativeBeat.LESSON: (
+                "{companero} le muestra que {objeto} no puede avisar cuando lo necesita"
+            ),
+            NarrativeBeat.ENDING: (
+                "{protagonista} lo cuida todos los días y {objeto} se recupera: cuidar "
+                "también es acordarse"
+            ),
+        },
+        emotions={
+            **_emociones_base(),
+            NarrativeBeat.FAILURE: Emotion.SADNESS,
+            NarrativeBeat.ENDING: Emotion.PRIDE,
+        },
+        companion_emotions=_companero_que_acompana(),
+    ),
+    EducationalValue.KEEPING_PROMISES: ValueProfile(
+        value=EducationalValue.KEEPING_PROMISES,
+        conflict="{protagonista} prometió algo y aparece un plan mucho mejor",
+        moral="Lo que prometiste vale justo cuando cuesta cumplirlo.",
+        question="¿Qué promesa cumpliste vos aunque te costara?",
+        # Acá el compañero es el que ESPERA. Su curva no es la del que pide algo: es la del
+        # que confía y después mira la puerta.
+        visual_notes={
+            NarrativeBeat.PROBLEM: (
+                "{protagonista} mirando hacia dos lados distintos: hacia donde lo espera "
+                "{companero} y hacia donde está el plan nuevo"
+            ),
+            NarrativeBeat.FAILURE: (
+                "{companero} sentado solo en el lugar donde quedaron, mirando el camino "
+                "vacío"
+            ),
+        },
+        escalations={
+            NarrativeBeat.ATTEMPT: (
+                "{protagonista} se dice que va un ratito y llega igual",
+                "{protagonista} se queda un rato más, y otro rato más",
+            ),
+        },
+        purposes={
+            NarrativeBeat.HOOK: "{protagonista} le promete algo a {companero} y quedan en verse",
+            NarrativeBeat.PROBLEM: "Aparece un plan mucho más divertido a la misma hora",
+            NarrativeBeat.ATTEMPT: "{protagonista} se va al plan nuevo pensando que llega igual",
+            NarrativeBeat.FAILURE: (
+                "Se hace tarde: {companero} esperó solo y {protagonista} no llegó"
+            ),
+            NarrativeBeat.LESSON: (
+                "{protagonista} ve la cara de {companero} y entiende qué se rompió: "
+                "no un plan, la confianza"
+            ),
+            NarrativeBeat.ENDING: (
+                "{protagonista} cumple lo que prometió, aunque ya no sea el plan más "
+                "divertido, y {companero} lo vuelve a esperar tranquilo"
+            ),
+        },
+        emotions={
+            **_emociones_base(),
+            NarrativeBeat.FAILURE: Emotion.SADNESS,
+            NarrativeBeat.LESSON: Emotion.SADNESS,
+        },
+        # El que espera: entusiasmado, confiado, y después solo.
+        companion_emotions={
+            **_emociones_companero(),
+            NarrativeBeat.HOOK: Emotion.JOY,
+            NarrativeBeat.PROBLEM: Emotion.CALM,
+            NarrativeBeat.ATTEMPT: Emotion.CALM,
+            NarrativeBeat.FAILURE: Emotion.SADNESS,
+        },
+    ),
 }
 
 

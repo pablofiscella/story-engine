@@ -81,6 +81,23 @@ class EducationalValue(StrEnum):
     # pensado es una palabra suelta y no una historia.
     ASKING_FOR_HELP = "pedir-ayuda"
     APOLOGIZING = "pedir-perdon"
+    # 21-ago-2026: los diez de arriba quedaron todos usados —cinco publicados en Cuentitos y
+    # cinco agendados— así que la serie se quedaba sin tema. Estos cuatro se eligieron para
+    # que NO se pisen con los que ya están, que es lo que hace que un cuento nuevo se sienta
+    # repetido:
+    #
+    #   INCLUDING   ≠ FRIENDSHIP  · amistad es hacer UN amigo; incluir es abrirle el grupo
+    #                               a alguien que ya está ahí y nadie llama
+    #   TAKING_TURNS ≠ PATIENCE   · paciencia es esperar solo; el turno es esperar frente a
+    #                               otro que quiere lo mismo AL MISMO TIEMPO
+    #   CARING      ≠ EMPATHY     · empatía es entender a alguien que puede decir qué le
+    #                               pasa; cuidar es hacerse cargo de algo que NO puede pedir
+    #   KEEPING_PROMISES ≠ HONESTY· honestidad es no mentir sobre lo que pasó; cumplir es
+    #                               sostener lo que dijiste cuando aparece algo mejor
+    INCLUDING = "incluir"
+    TAKING_TURNS = "esperar-turno"
+    CARING = "cuidar"
+    KEEPING_PROMISES = "cumplir"
 
 
 class CharacterRole(StrEnum):

@@ -197,3 +197,83 @@ def test_cada_valor_tiene_moraleja_y_pregunta_propias() -> None:
     preguntas = {p.question for p in PROFILES.values()}
     assert len(morales) == len(PROFILES)
     assert len(preguntas) == len(PROFILES)
+
+
+# ── los cuatro valores que abrieron la serie (21-ago-2026) ──────────────────
+#
+# Pablo: *"Los videos de dinos creo que ya se acabaron. Necesitamos seguir haciendo"*.
+# Al chequear no faltaban videos: faltaban TEMAS. Los diez valores originales estaban todos
+# usados —cinco publicados en Cuentitos y cinco agendados— así que la serie no tenía con qué
+# seguir.
+
+
+def test_los_cuatro_nuevos_tienen_perfil_completo():
+    """Un valor sin perfil es una palabra suelta: el planificador no sabe qué conflicto
+    armar y el cuento sale sin tensión."""
+    from engine.core.enums import EducationalValue, NarrativeBeat
+    from engine.generators.values import PROFILES
+
+    for v in ("incluir", "esperar-turno", "cuidar", "cumplir"):
+        p = PROFILES[EducationalValue(v)]
+        assert p.conflict and p.moral and p.question, v
+        # los seis beats, sin agujeros: un beat sin propósito lo inventa el escritor
+        for beat in NarrativeBeat:
+            assert beat in p.purposes, "%s sin propósito en %s" % (v, beat)
+            assert beat in p.emotions, "%s sin emoción en %s" % (v, beat)
+            assert beat in p.companion_emotions, "%s sin emoción del compañero en %s" % (v, beat)
+
+
+def test_ninguno_de_los_nuevos_se_pisa_con_otro():
+    """Dos valores que se resuelven con la misma escena dan dos cuentos que se sienten el
+    mismo. En un canal que publica seguido, eso se nota antes que cualquier otra cosa."""
+    from engine.generators.values import PROFILES
+
+    morales = [p.moral for p in PROFILES.values()]
+    assert len(morales) == len(set(morales)), "hay dos valores con la misma moraleja"
+    conflictos = [p.conflict for p in PROFILES.values()]
+    assert len(conflictos) == len(set(conflictos)), "hay dos valores con el mismo conflicto"
+    preguntas = [p.question for p in PROFILES.values()]
+    assert len(preguntas) == len(set(preguntas)), "hay dos valores con la misma pregunta"
+
+
+def test_las_preguntas_nuevas_no_arrancan_con_y_vos():
+    """Las diez originales arrancaban con "¿Y vos," y la voz las leía mal de forma
+    recurrente: salió "¿Mi voz?" en un cuento y "¿Para quién" en otro. El "vos" va DESPUÉS
+    del verbo."""
+    from engine.core.enums import EducationalValue
+    from engine.generators.values import PROFILES
+
+    for v in ("incluir", "esperar-turno", "cuidar", "cumplir"):
+        q = PROFILES[EducationalValue(v)].question
+        assert not q.lower().startswith("¿y vos"), q
+        assert " vos" in q, "la pregunta tiene que interpelar al que mira: %r" % q
+
+
+def test_los_que_necesitan_objeto_lo_declaran():
+    """`esperar-turno` sin una cosa concreta que se use de a uno es una abstracción, y el
+    ilustrador no tiene qué dibujar. Lo mismo `cuidar`, donde el objeto es lo que no puede
+    reclamar."""
+    from engine.core.enums import EducationalValue
+    from engine.generators.values import PROFILES
+
+    assert PROFILES[EducationalValue.TAKING_TURNS].needs_prop
+    assert PROFILES[EducationalValue.CARING].needs_prop
+    for v in (EducationalValue.TAKING_TURNS, EducationalValue.CARING):
+        p = PROFILES[v]
+        assert any("{objeto}" in t for t in p.purposes.values()), (
+            "%s declara needs_prop pero no usa {objeto} en ningún propósito" % v.value)
+
+
+def test_el_beat_del_intento_tiene_nota_visual_o_escalacion():
+    """El `intento` era el único beat sin nota visual, y por eso salió mal: el cuento decía
+    "empuja la roca y se rompe" y el ilustrador partió LA ROCA en vez del palito. Donde el
+    catálogo no dice qué se ve, lo inventa el escritor y lo interpreta el ilustrador, cada
+    uno por su lado."""
+    from engine.core.enums import EducationalValue, NarrativeBeat
+    from engine.generators.values import PROFILES
+
+    for v in ("incluir", "esperar-turno", "cuidar", "cumplir"):
+        p = PROFILES[EducationalValue(v)]
+        tiene = (NarrativeBeat.ATTEMPT in (p.visual_notes or {})
+                 or NarrativeBeat.ATTEMPT in (p.escalations or {}))
+        assert tiene, "%s: el intento no dice qué se ve ni cómo escala" % v
