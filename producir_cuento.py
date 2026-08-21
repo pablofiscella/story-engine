@@ -87,8 +87,18 @@ async def _producir(valor: str, *, solo_texto: bool, destino: Path):
                                  age=4, duration_s=40.0, characters=personajes)
 
     print("  título: «%s»" % story.metadata.title)
+    fantasmas = _revisar_elenco(story)
     for i, esc in enumerate(story.scenes, 1):
-        print("    %d. %s" % (i, (esc.narration or "")[:96]))
+        marca = "  ⚠" if i in fantasmas else "   "
+        print("  %s %d. %s" % (marca, i, (esc.narration or "")[:92]))
+    if fantasmas:
+        print()
+        print("  ⚠  EL TEXTO NOMBRA A ALGUIEN QUE NO SE VA A DIBUJAR en las escenas %s."
+              % ", ".join(str(i) for i in sorted(fantasmas)))
+        print("     El elenco sale de los `purposes`: el compañero entra sólo si el propósito")
+        print("     escribe {companero}. Si el texto lo nombra y el propósito no, el chico")
+        print("     escucha «Rexo mira a Dino» y ve a Dino solo.")
+        print("     Se arregla en values.py, no acá.")
     if solo_texto:
         return None
 
@@ -97,10 +107,48 @@ async def _producir(valor: str, *, solo_texto: bool, destino: Path):
         json.dump(json.loads(story.model_dump_json()), f, ensure_ascii=False, indent=1)
 
     from engine.generators.illustrator import SceneIllustrator
-    from engine.render.video import VideoRenderer
+    from engine.render.video import ShortRenderer
 
+    # LA VOZ VA ANTES QUE LAS IMÁGENES, y `narrate()` es un paso aparte del motor a
+    # propósito: el texto se revisa antes de gastar en TTS. Acá se agrega otra razón —
+    # las imágenes son lo más caro del cuento, así que si la voz falla conviene que falle
+    # antes de haberlas pagado. Y el render necesita las dos cosas: sin audio tira
+    # "las escenas no tienen audio: hay que narrarlas".
+    story = await motor.narrate(story, str(destino / "audio"))
     story = await SceneIllustrator(text_provider).illustrate(story, destino / "imagenes")
-    return Path(VideoRenderer().render(story, destino / ("%s.mp4" % valor)))
+    return Path(ShortRenderer().render(story, destino / ("%s.mp4" % valor)))
+
+
+
+def _revisar_elenco(story) -> set[int]:
+    """Escenas donde el TEXTO nombra a alguien que NO va a estar en el dibujo.
+
+    Pablo, 21-ago-2026: *"fijate que el texto coincida con lo que se ve. Varias veces está
+    pensando en Rexo y en la única que dice que piensa en Rexo es en la última. Rexo mira a
+    Dino y está solo Dino"*.
+
+    El elenco de cada escena lo decide `_elenco_de()` leyendo si el PROPÓSITO escribe
+    `{companero}`. Pero el texto del cuento lo escribe el modelo, que nombra a quien quiere.
+    Cuando las dos cosas no coinciden, el chico escucha «Rexo mira a Dino» y ve a Dino solo.
+
+    Esto se descubre recién mirando el video terminado —cuando ya se pagaron las imágenes—
+    así que el control va acá, sobre el texto, antes de ilustrar.
+    """
+    from engine.core.enums import CharacterRole
+
+    otros = [sc.character for sc in story.characters
+             if sc.role is not CharacterRole.PROTAGONIST]
+    if not otros:
+        return set()
+    fantasmas = set()
+    for i, esc in enumerate(story.scenes, 1):
+        texto = (esc.narration or "")
+        presentes = set(getattr(esc, "character_ids", []) or [])
+        for personaje in otros:
+            nombre = (personaje.name or "").strip()
+            if nombre and nombre in texto and personaje.id not in presentes:
+                fantasmas.add(i)
+    return fantasmas
 
 
 def main() -> int:

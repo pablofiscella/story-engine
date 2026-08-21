@@ -645,14 +645,15 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
             ),
         },
         purposes={
-            NarrativeBeat.HOOK: "Presentar a {protagonista} jugando y pasándola muy bien",
+            NarrativeBeat.HOOK: "{protagonista} juega y la pasa muy bien; {companero} está a un costado, mirando",
             NarrativeBeat.PROBLEM: (
                 "{companero} aparece y se queda mirando desde un costado, sin pedir nada"
             ),
-            NarrativeBeat.ATTEMPT: "{protagonista} sigue jugando como si no lo hubiera visto",
+            NarrativeBeat.ATTEMPT: "{protagonista} sigue jugando como si no hubiera visto a {companero}, que sigue "
+                "parado en el mismo lugar",
             NarrativeBeat.FAILURE: "El juego se pone aburrido; {companero} sigue afuera, sin jugar, y {protagonista} no entiende por qué se aburrió",
             NarrativeBeat.LESSON: (
-                "{protagonista} mira a {companero} y entiende que lo que falta no es un juguete sino su amigo"
+                "{protagonista} mira a {companero} y entiende que lo que le falta es él, no un juguete"
             ),
             NarrativeBeat.ENDING: (
                 "{protagonista} llama a {companero} y juegan juntos: el juego se pone "
@@ -691,12 +692,12 @@ PROFILES: dict[EducationalValue, ValueProfile] = {
         purposes={
             NarrativeBeat.HOOK: "Presentar a {protagonista} y {companero} contentos, con {objeto} cerca",
             NarrativeBeat.PROBLEM: "{protagonista} y {companero} quieren {objeto} en el mismo momento y ninguno lo suelta",
-            NarrativeBeat.ATTEMPT: "{protagonista} tira más fuerte para quedárselo primero",
+            NarrativeBeat.ATTEMPT: "{protagonista} tira de {objeto} más fuerte que {companero} para quedárselo primero",
             NarrativeBeat.FAILURE: (
                 "De tanto tironear nadie lo usa: {objeto} queda tirado, y {protagonista} y {companero} enojados"
             ),
             NarrativeBeat.LESSON: (
-                "Alguien propone contar hasta diez y cambiar: uno usa {objeto} mientras el "
+                "{companero} propone contar hasta diez y cambiar: uno usa {objeto} mientras el "
                 "otro cuenta"
             ),
             NarrativeBeat.ENDING: (
