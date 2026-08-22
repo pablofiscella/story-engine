@@ -184,11 +184,23 @@ def _encadenar(tramos: list[str], duraciones: list[float]) -> str:
 class ShortRenderer:
     """Arma el MP4 de una historia ya ilustrada y narrada."""
 
-    def __init__(self, *, aspect: AspectRatio = AspectRatio.VERTICAL, fps: int = FPS) -> None:
+    def __init__(self, *, aspect: AspectRatio = AspectRatio.VERTICAL, fps: int = FPS,
+                 clips: dict[int, str | Path] | None = None) -> None:
+        """`clips` reemplaza la imagen fija de una escena por un video ya animado.
+
+        La clave es el índice de la escena (0 para la primera). Lo que no esté en el
+        diccionario sigue saliendo de `escena.image_path`, así que un cuento se puede
+        animar A MEDIAS: si una escena sale mal, se rehace sola y las otras no se tocan.
+
+        Pablo, 21-ago-2026: *"antes pasame los clips separados así podés cambiar si uno
+        salió mal"*. Ese pedido es la razón de que esto sea un diccionario por escena y
+        no un interruptor de "animado sí/no".
+        """
         if shutil.which("ffmpeg") is None:
             raise DomainError("Falta ffmpeg: el render lo necesita para armar el video.")
         self._ancho, self._alto = TAMANO[aspect]
         self._fps = fps
+        self._clips = {int(k): str(v) for k, v in (clips or {}).items()}
 
     def render(self, story: Story, dest: str | Path) -> Path:
         """Devuelve la ruta del MP4."""
@@ -202,10 +214,9 @@ class ShortRenderer:
 
         # --- el título, sobre la primera imagen ---------------------------------
         # También con el margen del cruce: si no, el título se ve 0.4s menos.
-        entradas += [
-            "-loop", "1", "-t", f"{TITULO_S + TRANSICION_S:.3f}",
-            "-i", story.scenes[0].image_path,
-        ]
+        arg_titulo, filtro_titulo = self._fuente(
+            0, story.scenes[0].image_path, TITULO_S + TRANSICION_S, 0)
+        entradas += arg_titulo
         # SIN RESPALDO A PROPÓSITO. Antes decía `or "Un cuento"` y por eso dos cuentos
         # se publicaron con ese cartel: el título nunca se generaba y nadie se enteró
         # hasta verlo en YouTube. Un video sin título no se arma; falla acá.
@@ -220,7 +231,7 @@ class ShortRenderer:
             y="h*0.10",
             tope=88,
         )
-        filtros.append(f"[0:v]{self._encuadrar(TITULO_S + TRANSICION_S, 0)},{placa}[titulo]")
+        filtros.append(f"[0:v]{filtro_titulo},{placa}[titulo]")
         tramos.append("[titulo]")
 
         # --- las escenas ---------------------------------------------------------
@@ -230,8 +241,9 @@ class ShortRenderer:
         duraciones = [e.real_duration_s + PAUSA_ENTRE_ESCENAS_S for e in story.scenes]
         for i, escena in enumerate(story.scenes, start=1):
             largo = duraciones[i - 1] + TRANSICION_S
-            entradas += ["-loop", "1", "-t", f"{largo:.3f}", "-i", escena.image_path]
-            filtros.append(f"[{i}:v]{self._encuadrar(largo, i)}[v{i}]")
+            arg, filtro = self._fuente(i - 1, escena.image_path, largo, i)
+            entradas += arg
+            filtros.append(f"[{i}:v]{filtro}[v{i}]")
             tramos.append(f"[v{i}]")
 
         # --- el cierre, sobre la última imagen -----------------------------------
@@ -240,10 +252,10 @@ class ShortRenderer:
         # También con el margen del cruce: el último `xfade` acorta el resultado en
         # `TRANSICION_S`, y si el video queda más corto que el audio, `-shortest` le
         # corta el final a la narración. Pasó: la última frase perdía una sílaba.
-        entradas += [
-            "-loop", "1", "-t", f"{cierre_s + TRANSICION_S:.3f}",
-            "-i", story.scenes[-1].image_path,
-        ]
+        arg_cierre, filtro_cierre = self._fuente(
+            len(story.scenes) - 1, story.scenes[-1].image_path,
+            cierre_s + TRANSICION_S, idx_cierre)
+        entradas += arg_cierre
         # La moraleja se dice primero y la pregunta después: el texto entra un
         # segundo antes de que empiece la pregunta hablada.
         antes_de_la_pregunta = sum(t.duration_s for t in story.closing_audio[:-1])
@@ -254,10 +266,7 @@ class ShortRenderer:
             tope=64,
             desde=max(0.0, antes_de_la_pregunta - ADELANTO_DEL_CIERRE_S),
         )
-        filtros.append(
-            f"[{idx_cierre}:v]{self._encuadrar(cierre_s + TRANSICION_S, idx_cierre)},"
-            f"{pregunta}[cierre]"
-        )
+        filtros.append(f"[{idx_cierre}:v]{filtro_cierre},{pregunta}[cierre]")
         tramos.append("[cierre]")
 
         # --- el audio -------------------------------------------------------------
@@ -334,6 +343,30 @@ class ShortRenderer:
             story.advance_to(StoryStatus.RENDERED)
         story.metadata.touch()
         return salida
+
+    # ------------------------------------------------------------------------
+    def _fuente(self, indice_escena: int, imagen: str, largo: float,
+                orden: int) -> tuple[list[str], str]:
+        """Los argumentos de entrada y el filtro de UN tramo.
+
+        Con imagen fija es lo de siempre: `-loop 1 -t` y el zoom lento de cámara.
+
+        Con clip animado hay dos diferencias, y las dos importan:
+
+        - **No se le pone zoom.** El clip ya se mueve; encima un zoompan da un mareo.
+        - **El último cuadro se CONGELA** hasta completar el tramo (`tpad=stop_mode=clone`).
+          Wan genera 5,0 s exactos y una escena dura eso más la pausa: sobra medio segundo.
+          Las otras dos salidas son peores — repetir el clip mete un salto visible en el
+          medio de la escena, y estirarlo con `setpts` lo pone en cámara lenta.
+        """
+        clip = self._clips.get(indice_escena)
+        if not clip:
+            return (["-loop", "1", "-t", f"{largo:.3f}", "-i", imagen],
+                    self._encuadrar(largo, orden))
+        return (["-i", clip],
+                f"{self._encuadrar()},"
+                f"tpad=stop_mode=clone:stop_duration={largo:.3f},"
+                f"trim=duration={largo:.3f},setpts=PTS-STARTPTS")
 
     # ------------------------------------------------------------------------
     def _encuadrar(self, dur_s: float | None = None, indice: int = 0) -> str:
