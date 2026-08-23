@@ -181,6 +181,40 @@ def _encadenar(tramos: list[str], duraciones: list[float]) -> str:
     return ";".join(partes)
 
 
+def _morir_con_el_padre() -> None:
+    """Le pide al kernel que mate este proceso cuando muera el que lo lanzó.
+
+    `PR_SET_PDEATHSIG` es una llamada de Linux: la promesa la cumple el kernel, no Python.
+    Por eso vale aunque al padre lo maten con SIGKILL, que es cuando ningún `except`, ningún
+    `finally` y ningún handler de señales llegan a correr.
+
+    Es lo que faltaba el 20-ago-2026 —cuando un ffmpeg quedó 87 horas quemando un core— y lo
+    que hizo que el 22-ago volvieran a aparecer dos, uno con 32 horas de CPU, lanzados por el
+    mismo test y sobre archivos temporales que pytest ya había borrado.
+
+    Si algo falla —otro sistema operativo, libc distinta— no se rompe el render: se pierde
+    sólo esta protección, que es exactamente lo que había antes. **El precio de ese `except`
+    es que la protección puede dejar de andar sin avisar**, así que se comprueba a mano:
+
+        # se lanza un ffmpeg eterno, se mata al PADRE con SIGKILL y se mira ESE pid
+        p = subprocess.Popen(["ffmpeg", "-f", "lavfi", "-i", "testsrc", "-t", "99999",
+                              "-preset", "veryslow", "/tmp/x.mp4"],
+                             preexec_fn=_morir_con_el_padre)
+
+    Y se mira **el pid exacto** con `kill -0`, nunca `pgrep`: al comprobarlo el 22-ago-2026
+    dio dos falsos negativos seguidos, uno porque `pgrep -f testsrc` se matcheaba a sí mismo
+    y otro porque contaba un ffmpeg que había sobrevivido a la prueba anterior.
+    """
+    try:
+        import ctypes
+        import signal
+
+        PR_SET_PDEATHSIG = 1
+        ctypes.CDLL("libc.so.6", use_errno=True).prctl(PR_SET_PDEATHSIG, signal.SIGKILL)
+    except Exception:
+        pass
+
+
 class ShortRenderer:
     """Arma el MP4 de una historia ya ilustrada y narrada."""
 
@@ -320,10 +354,15 @@ class ShortRenderer:
         # que lo lanzó y queda huérfano para siempre — no hay nadie que lo espere ni que
         # lo mate. Ya pasó: ver SEGUNDOS_DE_RENDER_POR_SEGUNDO_DE_VIDEO.
         #
-        # No hace falta matarlo a mano en un `finally`: `subprocess.run` ya mata al hijo
-        # ante CUALQUIER excepción —incluido el timeout y un Ctrl-C— porque su `except`
-        # es genérico y llama a `process.kill()`. Agregar el `finally` sería código que
-        # no hace nada y que hace creer que protege de algo.
+        # Con el timeout solo NO ALCANZA, y volvió a pasar el 22-ago-2026: dos ffmpeg
+        # huérfanos del MISMO test, uno con 32 horas de CPU. `subprocess.run` mata al hijo
+        # ante cualquier EXCEPCIÓN —timeout incluido—, pero si al padre lo matan con SIGKILL
+        # no corre ningún `except`: el proceso muere sin ejecutar una línea más y el ffmpeg
+        # queda solo, quemando un core sobre archivos que ya nadie va a leer.
+        #
+        # Por eso además va `PR_SET_PDEATHSIG`: se lo pide el KERNEL, no Python, así que
+        # funciona aunque al padre lo maten de la forma más brutal. Es la única defensa que
+        # no depende de que alcancemos a ejecutar algo.
         try:
             subprocess.run(
                 ["ffmpeg", "-y", *entradas, "-filter_complex", filtro,
@@ -331,6 +370,7 @@ class ShortRenderer:
                  "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "medium", "-crf", "20",
                  "-c:a", "aac", "-b:a", "128k", "-shortest", str(salida)],
                 check=True, capture_output=True, timeout=_timeout_de(total),
+                preexec_fn=_morir_con_el_padre,
             )
         except subprocess.TimeoutExpired as e:
             # El mensaje dice cuánto se esperó y para qué video: sin eso, quien lo vea en
